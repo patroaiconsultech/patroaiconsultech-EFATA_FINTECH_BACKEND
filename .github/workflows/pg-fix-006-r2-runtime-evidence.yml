@@ -1,0 +1,87 @@
+name: postgres-targeted-diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  targeted-postgres-diagnostic:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: fintech_ci
+          POSTGRES_USER: fintech
+          POSTGRES_PASSWORD: fintech_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fintech -d fintech_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      FINTECH_APP_ENV: test
+      FINTECH_DATABASE_URL: postgresql+psycopg://fintech:fintech_ci_only@localhost:5432/fintech_ci
+      FINTECH_AUTH_PROVIDER: mock
+      RUN_POSTGRES_INTEGRATION: "1"
+
+    steps:
+      - name: Checkout exact failing backend commit
+        uses: actions/checkout@v4
+        with:
+          ref: 089dfc42842c48a0129643b238b829a65c94fac6
+
+      - name: Confirm code-under-test SHA
+        run: |
+          echo "EXPECTED_SHA=089dfc42842c48a0129643b238b829a65c94fac6"
+          echo "ACTUAL_SHA=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "089dfc42842c48a0129643b238b829a65c94fac6"
+
+      - name: Setup uv / Python 3.13
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install frozen dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Prove PostgreSQL runtime
+        run: |
+          uv run python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["FINTECH_DATABASE_URL"])
+          with engine.connect() as connection:
+              row = connection.execute(
+                  text(
+                      "select version(), current_database(), current_user, "
+                      "current_setting('server_version_num')"
+                  )
+              ).one()
+              print(f"postgres_version={row[0]}")
+              print(f"database={row[1]}")
+              print(f"current_user={row[2]}")
+              print(f"server_version_num={row[3]}")
+          engine.dispose()
+          PY
+
+      - name: Alembic upgrade head
+        run: uv run alembic upgrade head
+
+      - name: Run single failing test with full traceback
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest             -vv             -x             --tb=long             -s             tests/test_reconciliation_persistent_api.py::test_operator_can_manage_review_queue_and_outbox             2>&1 | tee targeted_postgres_diagnostic.log
+
+      - name: Upload full diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-targeted-diagnostic-log
+          path: targeted_postgres_diagnostic.log
+          if-no-files-found: warn
