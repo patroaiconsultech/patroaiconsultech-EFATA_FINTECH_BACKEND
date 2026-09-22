@@ -69,7 +69,11 @@ jobs:
       - name: Verify exact proposed file hashes
         shell: bash
         run: |
-          echo "4fe3069f70dc73602b5f4bdf852a1c82cd40afcac257f6741bb3681595d2bd0b  app/models.py" | sha256sum -c -\n          echo "7fda5c40427dd378913a89d8501575576192fa9721560f64e339729ce79d9feb  migrations/versions/0010_audit_resource_id_r11.py" | sha256sum -c -\n          echo "65cf7665353d1d5f501ea51729ef5f84e9be823fce70901a539dc846529ed9c9  tests/test_audit_resource_id_contract_pgfix006.py" | sha256sum -c -\n          echo "6e0393346d5c56734d1488fee8702942f6eb0a06aa92b0c4d4306de0de4298d1  tests/test_audit_resource_id_migration_postgres_pgfix006.py" | sha256sum -c -\n
+          echo "4fe3069f70dc73602b5f4bdf852a1c82cd40afcac257f6741bb3681595d2bd0b  app/models.py" | sha256sum -c -
+          echo "7fda5c40427dd378913a89d8501575576192fa9721560f64e339729ce79d9feb  migrations/versions/0010_audit_resource_id_r11.py" | sha256sum -c -
+          echo "65cf7665353d1d5f501ea51729ef5f84e9be823fce70901a539dc846529ed9c9  tests/test_audit_resource_id_contract_pgfix006.py" | sha256sum -c -
+          echo "6e0393346d5c56734d1488fee8702942f6eb0a06aa92b0c4d4306de0de4298d1  tests/test_audit_resource_id_migration_postgres_pgfix006.py" | sha256sum -c -
+
 
       - name: Setup uv / Python 3.13
         uses: astral-sh/setup-uv@v6
