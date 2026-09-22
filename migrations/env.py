@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import get_settings
 from app.db import Base
+from app.migration_support import ensure_alembic_version_capacity
 from app import models  # noqa: F401
 
 config = context.config
@@ -34,7 +35,17 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        # Alembic defaults version_num to VARCHAR(32), but this repository has
+        # historical revision IDs longer than 32 chars. Prepare/widen only the
+        # Alembic metadata table before running application migrations.
+        with connection.begin():
+            ensure_alembic_version_capacity(connection)
+
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+        )
         with context.begin_transaction():
             context.run_migrations()
 
