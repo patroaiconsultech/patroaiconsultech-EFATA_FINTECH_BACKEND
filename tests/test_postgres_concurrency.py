@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import ReconciliationInboxRecord, ReconciliationReviewRecord
+from app.models import ReconciliationInboxRecord, ReconciliationReviewRecord, User
 
 
 pytestmark = pytest.mark.postgres
@@ -16,9 +16,36 @@ if os.getenv("RUN_POSTGRES_INTEGRATION") != "1" or not os.getenv("FINTECH_DATABA
     pytest.skip("requires RUN_POSTGRES_INTEGRATION=1 and a PostgreSQL DATABASE_URL", allow_module_level=True)
 
 
+WORKER_A_ID = "30000000-0000-0000-0000-000000000001"
+WORKER_B_ID = "30000000-0000-0000-0000-000000000002"
+
+
 def seed_open_review() -> str:
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
+        # assigned_to is an FK to iam_users.user_id. Use real IAM principals
+        # so this test exercises row-lock concurrency rather than failing on
+        # an invalid assignee fixture.
+        db.add_all(
+            [
+                User(
+                    user_id=WORKER_A_ID,
+                    email="pg-worker-a@tests.efata.invalid",
+                    display_name="PostgreSQL Worker A",
+                    status="ACTIVE",
+                    created_at=now,
+                ),
+                User(
+                    user_id=WORKER_B_ID,
+                    email="pg-worker-b@tests.efata.invalid",
+                    display_name="PostgreSQL Worker B",
+                    status="ACTIVE",
+                    created_at=now,
+                ),
+            ]
+        )
+        db.flush()
+
         inbox = ReconciliationInboxRecord(
             source="POSTGRES_CONCURRENCY_TEST",
             external_event_id="event-concurrency-1",
@@ -68,8 +95,8 @@ def test_two_postgres_workers_claim_one_review_once():
     barrier = Barrier(2)
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
-            executor.submit(claim_one, barrier, "worker-a"),
-            executor.submit(claim_one, barrier, "worker-b"),
+            executor.submit(claim_one, barrier, WORKER_A_ID),
+            executor.submit(claim_one, barrier, WORKER_B_ID),
         ]
         claimed = [review for future in futures for review in future.result()]
 
@@ -77,4 +104,4 @@ def test_two_postgres_workers_claim_one_review_once():
     with SessionLocal() as db:
         row = db.get(ReconciliationReviewRecord, review_id)
         assert row.status == "CLAIMED"
-        assert row.assigned_to in {"worker-a", "worker-b"}
+        assert row.assigned_to in {WORKER_A_ID, WORKER_B_ID}
