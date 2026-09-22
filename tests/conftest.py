@@ -68,12 +68,57 @@ def seed() -> None:
             Membership(user_id=IDS["foreign_user"], tenant_id=IDS["foreign_tenant"], role="INVESTOR_ANALYST"),
             Membership(user_id=IDS["partner_user"], tenant_id=IDS["partner_tenant"], role="PARTNER_ADMIN"),
         ]
-        db.add_all(orgs + tenants + users + memberships)
+        # Flush in explicit FK dependency order. The ORM models intentionally
+        # do not declare relationship() objects, so relying on one mixed
+        # add_all()/flush can produce a Membership INSERT before its User on
+        # PostgreSQL. SQLite previously masked this because FK enforcement is
+        # not equivalent in the local test setup.
+        db.add_all(orgs)
+        db.flush()
+
+        db.add_all(users)
+        db.flush()
+
+        db.add_all(tenants)
+        db.flush()
+
+        db.add_all(memberships)
         db.commit()
+
+
+def _truncate_postgres_test_data() -> None:
+    """Reset rows without destroying the Alembic-managed PostgreSQL schema.
+
+    The PostgreSQL proof gate migrates the database first. Dropping Base
+    metadata inside pytest would destroy that migrated schema while leaving
+    Alembic's version table at head, invalidating the later downgrade proof.
+    """
+    table_names = [
+        engine.dialect.identifier_preparer.quote(table.name)
+        for table in Base.metadata.sorted_tables
+    ]
+    if not table_names:
+        return
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE "
+            + ", ".join(table_names)
+            + " RESTART IDENTITY CASCADE"
+        )
 
 
 @pytest.fixture(autouse=True)
 def reset_database():
+    if engine.dialect.name == "postgresql":
+        # Preserve the exact schema created by Alembic; isolate tests by rows.
+        _truncate_postgres_test_data()
+        seed()
+        yield
+        _truncate_postgres_test_data()
+        return
+
+    # Local SQLite regression keeps its historical isolated-schema behavior.
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     seed()
