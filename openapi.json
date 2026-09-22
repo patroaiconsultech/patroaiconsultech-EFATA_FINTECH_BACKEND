@@ -1,0 +1,2502 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Efatà Fintech",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/health/live": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Live",
+        "operationId": "live_api_v1_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Live Api V1 Health Live Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Ready",
+        "operationId": "ready_api_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Ready Api V1 Health Ready Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": [
+          "context"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Me Api V1 Me Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/leads": {
+      "get": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "List Leads",
+        "operationId": "list_leads_api_v1_leads_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LeadRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Leads Api V1 Leads Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "Create Lead",
+        "operationId": "create_lead_api_v1_leads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeadCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/leads/{lead_id}": {
+      "get": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "Get Lead",
+        "operationId": "get_lead_api_v1_leads__lead_id__get",
+        "parameters": [
+          {
+            "name": "lead_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lead Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/representations": {
+      "post": {
+        "tags": [
+          "representations"
+        ],
+        "summary": "Create Representation",
+        "operationId": "create_representation_api_v1_representations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepresentationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepresentationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/representations/{authorization_id}/accept": {
+      "post": {
+        "tags": [
+          "representations"
+        ],
+        "summary": "Accept Representation",
+        "operationId": "accept_representation_api_v1_representations__authorization_id__accept_post",
+        "parameters": [
+          {
+            "name": "authorization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepresentationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/representations/{authorization_id}/revoke": {
+      "post": {
+        "tags": [
+          "representations"
+        ],
+        "summary": "Revoke Representation",
+        "operationId": "revoke_representation_api_v1_representations__authorization_id__revoke_post",
+        "parameters": [
+          {
+            "name": "authorization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepresentationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/opportunities": {
+      "get": {
+        "tags": [
+          "opportunities"
+        ],
+        "summary": "List Opportunities",
+        "operationId": "list_opportunities_api_v1_opportunities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OpportunityRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Opportunities Api V1 Opportunities Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "opportunities"
+        ],
+        "summary": "Create Opportunity",
+        "operationId": "create_opportunity_api_v1_opportunities_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpportunityCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}": {
+      "get": {
+        "tags": [
+          "opportunities"
+        ],
+        "summary": "Get Opportunity",
+        "operationId": "get_opportunity_api_v1_opportunities__opportunity_id__get",
+        "parameters": [
+          {
+            "name": "opportunity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Opportunity Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}/documents": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Create Mock Document",
+        "operationId": "create_mock_document_api_v1_opportunities__opportunity_id__documents_post",
+        "parameters": [
+          {
+            "name": "opportunity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Opportunity Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}/qualification": {
+      "post": {
+        "tags": [
+          "qualification"
+        ],
+        "summary": "Qualify Opportunity",
+        "operationId": "qualify_opportunity_api_v1_opportunities__opportunity_id__qualification_post",
+        "parameters": [
+          {
+            "name": "opportunity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Opportunity Id"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualificationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/borrower-profiles": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "List Borrower Profiles",
+        "operationId": "list_borrower_profiles_api_v1_marketplace_borrower_profiles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BorrowerProfileRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Borrower Profiles Api V1 Marketplace Borrower Profiles Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Create Borrower Profile",
+        "operationId": "create_borrower_profile_api_v1_marketplace_borrower_profiles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BorrowerProfileCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BorrowerProfileRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/funding-providers": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "List Funding Providers",
+        "operationId": "list_funding_providers_api_v1_marketplace_funding_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FundingProviderRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Funding Providers Api V1 Marketplace Funding Providers Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Create Funding Provider",
+        "operationId": "create_funding_provider_api_v1_marketplace_funding_providers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FundingProviderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundingProviderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/funding-products": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "List Funding Products",
+        "operationId": "list_funding_products_api_v1_marketplace_funding_products_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FundingProductRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Funding Products Api V1 Marketplace Funding Products Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Create Funding Product",
+        "operationId": "create_funding_product_api_v1_marketplace_funding_products_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FundingProductCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundingProductRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/partners": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "List Partner Profiles",
+        "operationId": "list_partner_profiles_api_v1_marketplace_partners_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PartnerProfileRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Partner Profiles Api V1 Marketplace Partners Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Create Partner Profile",
+        "operationId": "create_partner_profile_api_v1_marketplace_partners_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartnerProfileCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerProfileRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/credit-requests": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "List Credit Requests",
+        "operationId": "list_credit_requests_api_v1_marketplace_credit_requests_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CreditRequestRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Credit Requests Api V1 Marketplace Credit Requests Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Create Credit Request",
+        "operationId": "create_credit_request_api_v1_marketplace_credit_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditRequestRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/credit-requests/{credit_request_id}/documents": {
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Upload Credit Request Document",
+        "operationId": "upload_credit_request_document_api_v1_marketplace_credit_requests__credit_request_id__documents_post",
+        "parameters": [
+          {
+            "name": "credit_request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Credit Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditRequestDocumentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditRequestDocumentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "List Credit Request Documents",
+        "operationId": "list_credit_request_documents_api_v1_marketplace_credit_requests__credit_request_id__documents_get",
+        "parameters": [
+          {
+            "name": "credit_request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Credit Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CreditRequestDocumentRead"
+                  },
+                  "title": "Response List Credit Request Documents Api V1 Marketplace Credit Requests  Credit Request Id  Documents Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/credit-requests/{credit_request_id}/matching": {
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Run Matching",
+        "operationId": "run_matching_api_v1_marketplace_credit_requests__credit_request_id__matching_post",
+        "parameters": [
+          {
+            "name": "credit_request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Credit Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MatchRead"
+                  },
+                  "title": "Response Run Matching Api V1 Marketplace Credit Requests  Credit Request Id  Matching Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/matches": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "List Matches",
+        "operationId": "list_matches_api_v1_marketplace_matches_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MatchRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Matches Api V1 Marketplace Matches Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/matches/{match_id}/status": {
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Update Match Status",
+        "operationId": "update_match_status_api_v1_marketplace_matches__match_id__status_post",
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Match Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/commission-events": {
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Create Commission Event",
+        "operationId": "create_commission_event_api_v1_marketplace_commission_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommissionEventCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionEventRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BorrowerProfileCreate": {
+        "properties": {
+          "segment": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Segment"
+          },
+          "sectors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Sectors"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Regions"
+          },
+          "group_profile": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Group Profile"
+          }
+        },
+        "type": "object",
+        "required": [
+          "segment"
+        ],
+        "title": "BorrowerProfileCreate"
+      },
+      "BorrowerProfileRead": {
+        "properties": {
+          "borrower_profile_id": {
+            "type": "string",
+            "title": "Borrower Profile Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "segment": {
+            "type": "string",
+            "title": "Segment"
+          },
+          "sectors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sectors"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Regions"
+          },
+          "group_profile": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Group Profile"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "borrower_profile_id",
+          "tenant_id",
+          "segment",
+          "sectors",
+          "regions",
+          "group_profile",
+          "status"
+        ],
+        "title": "BorrowerProfileRead"
+      },
+      "CommissionEventCreate": {
+        "properties": {
+          "match_id": {
+            "type": "string",
+            "title": "Match Id"
+          },
+          "beneficiary_tenant_id": {
+            "type": "string",
+            "title": "Beneficiary Tenant Id"
+          },
+          "event_type": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Event Type"
+          },
+          "base_amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Base Amount"
+          },
+          "rate_bps": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Rate Bps",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "match_id",
+          "beneficiary_tenant_id",
+          "event_type",
+          "base_amount"
+        ],
+        "title": "CommissionEventCreate"
+      },
+      "CommissionEventRead": {
+        "properties": {
+          "commission_event_id": {
+            "type": "string",
+            "title": "Commission Event Id"
+          },
+          "match_id": {
+            "type": "string",
+            "title": "Match Id"
+          },
+          "beneficiary_tenant_id": {
+            "type": "string",
+            "title": "Beneficiary Tenant Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "base_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Base Amount"
+          },
+          "rate_bps": {
+            "type": "integer",
+            "title": "Rate Bps"
+          },
+          "estimated_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Estimated Amount"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "commission_event_id",
+          "match_id",
+          "beneficiary_tenant_id",
+          "event_type",
+          "base_amount",
+          "rate_bps",
+          "estimated_amount",
+          "status"
+        ],
+        "title": "CommissionEventRead"
+      },
+      "CreditRequestCreate": {
+        "properties": {
+          "borrower_profile_id": {
+            "type": "string",
+            "title": "Borrower Profile Id"
+          },
+          "source_partner_tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Partner Tenant Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "credit_type": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Credit Type"
+          },
+          "requested_amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Requested Amount"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "default": "BRL"
+          },
+          "term_months": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Term Months"
+          },
+          "grace_months": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 0.0,
+            "title": "Grace Months",
+            "default": 0
+          },
+          "collateral_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Collateral Types"
+          },
+          "sectors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Sectors"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Regions"
+          },
+          "project_stage": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Project Stage"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 3,
+            "title": "Purpose"
+          },
+          "consent_status": {
+            "type": "string",
+            "pattern": "^(PENDING|GRANTED|REVOKED)$",
+            "title": "Consent Status",
+            "default": "PENDING"
+          },
+          "status": {
+            "type": "string",
+            "pattern": "^(DRAFT|SUBMITTED|TRIAGE|INFORMATION_REQUIRED|QUALIFIED|MATCHING)$",
+            "title": "Status",
+            "default": "DRAFT"
+          }
+        },
+        "type": "object",
+        "required": [
+          "borrower_profile_id",
+          "title",
+          "credit_type",
+          "requested_amount",
+          "term_months",
+          "project_stage",
+          "purpose"
+        ],
+        "title": "CreditRequestCreate"
+      },
+      "CreditRequestDocumentCreate": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename"
+          },
+          "document_type": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Document Type"
+          },
+          "checksum_sha256": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Checksum Sha256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "document_type",
+          "checksum_sha256"
+        ],
+        "title": "CreditRequestDocumentCreate"
+      },
+      "CreditRequestDocumentRead": {
+        "properties": {
+          "credit_request_document_id": {
+            "type": "string",
+            "title": "Credit Request Document Id"
+          },
+          "credit_request_id": {
+            "type": "string",
+            "title": "Credit Request Id"
+          },
+          "owner_tenant_id": {
+            "type": "string",
+            "title": "Owner Tenant Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          },
+          "storage_key": {
+            "type": "string",
+            "title": "Storage Key"
+          },
+          "checksum_sha256": {
+            "type": "string",
+            "title": "Checksum Sha256"
+          },
+          "processing_status": {
+            "type": "string",
+            "title": "Processing Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "credit_request_document_id",
+          "credit_request_id",
+          "owner_tenant_id",
+          "filename",
+          "document_type",
+          "storage_key",
+          "checksum_sha256",
+          "processing_status"
+        ],
+        "title": "CreditRequestDocumentRead"
+      },
+      "CreditRequestRead": {
+        "properties": {
+          "credit_request_id": {
+            "type": "string",
+            "title": "Credit Request Id"
+          },
+          "owner_tenant_id": {
+            "type": "string",
+            "title": "Owner Tenant Id"
+          },
+          "borrower_profile_id": {
+            "type": "string",
+            "title": "Borrower Profile Id"
+          },
+          "source_partner_tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Partner Tenant Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "credit_type": {
+            "type": "string",
+            "title": "Credit Type"
+          },
+          "requested_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Requested Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "term_months": {
+            "type": "integer",
+            "title": "Term Months"
+          },
+          "grace_months": {
+            "type": "integer",
+            "title": "Grace Months"
+          },
+          "collateral_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Collateral Types"
+          },
+          "sectors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sectors"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Regions"
+          },
+          "project_stage": {
+            "type": "string",
+            "title": "Project Stage"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "consent_status": {
+            "type": "string",
+            "title": "Consent Status"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "credit_request_id",
+          "owner_tenant_id",
+          "borrower_profile_id",
+          "source_partner_tenant_id",
+          "title",
+          "credit_type",
+          "requested_amount",
+          "currency",
+          "term_months",
+          "grace_months",
+          "collateral_types",
+          "sectors",
+          "regions",
+          "project_stage",
+          "purpose",
+          "consent_status",
+          "status",
+          "version"
+        ],
+        "title": "CreditRequestRead"
+      },
+      "DocumentCreate": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename"
+          },
+          "document_type": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Document Type"
+          },
+          "checksum_sha256": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Checksum Sha256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "document_type",
+          "checksum_sha256"
+        ],
+        "title": "DocumentCreate"
+      },
+      "DocumentRead": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "opportunity_id": {
+            "type": "string",
+            "title": "Opportunity Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          },
+          "storage_key": {
+            "type": "string",
+            "title": "Storage Key"
+          },
+          "processing_status": {
+            "type": "string",
+            "title": "Processing Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "tenant_id",
+          "opportunity_id",
+          "filename",
+          "document_type",
+          "storage_key",
+          "processing_status"
+        ],
+        "title": "DocumentRead"
+      },
+      "FundingProductCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "product_type": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Product Type"
+          },
+          "min_ticket": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Min Ticket"
+          },
+          "max_ticket": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Max Ticket"
+          },
+          "min_term_months": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Min Term Months"
+          },
+          "max_term_months": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Max Term Months"
+          },
+          "allowed_collateral_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Allowed Collateral Types"
+          },
+          "sectors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Sectors"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Regions"
+          },
+          "stage_requirements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Stage Requirements"
+          },
+          "indicative_terms": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Indicative Terms"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "default": "BRL"
+          },
+          "status": {
+            "type": "string",
+            "pattern": "^(DRAFT|UNDER_REVIEW|ACTIVE|PAUSED|ARCHIVED)$",
+            "title": "Status",
+            "default": "DRAFT"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "product_type",
+          "min_ticket",
+          "max_ticket",
+          "min_term_months",
+          "max_term_months"
+        ],
+        "title": "FundingProductCreate"
+      },
+      "FundingProductRead": {
+        "properties": {
+          "funding_product_id": {
+            "type": "string",
+            "title": "Funding Product Id"
+          },
+          "funding_provider_id": {
+            "type": "string",
+            "title": "Funding Provider Id"
+          },
+          "provider_tenant_id": {
+            "type": "string",
+            "title": "Provider Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "product_type": {
+            "type": "string",
+            "title": "Product Type"
+          },
+          "min_ticket": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Min Ticket"
+          },
+          "max_ticket": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Max Ticket"
+          },
+          "min_term_months": {
+            "type": "integer",
+            "title": "Min Term Months"
+          },
+          "max_term_months": {
+            "type": "integer",
+            "title": "Max Term Months"
+          },
+          "allowed_collateral_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Collateral Types"
+          },
+          "sectors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sectors"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Regions"
+          },
+          "stage_requirements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stage Requirements"
+          },
+          "indicative_terms": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Indicative Terms"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "funding_product_id",
+          "funding_provider_id",
+          "provider_tenant_id",
+          "name",
+          "product_type",
+          "min_ticket",
+          "max_ticket",
+          "min_term_months",
+          "max_term_months",
+          "allowed_collateral_types",
+          "sectors",
+          "regions",
+          "stage_requirements",
+          "indicative_terms",
+          "currency",
+          "status"
+        ],
+        "title": "FundingProductRead"
+      },
+      "FundingProviderCreate": {
+        "properties": {
+          "provider_type": {
+            "type": "string",
+            "pattern": "^(FUND|BANK|SECURITIZER|FAMILY_OFFICE|OTHER)$",
+            "title": "Provider Type"
+          },
+          "legal_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Legal Name"
+          },
+          "website": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website"
+          },
+          "mandate_summary": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 3,
+            "title": "Mandate Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider_type",
+          "legal_name",
+          "mandate_summary"
+        ],
+        "title": "FundingProviderCreate"
+      },
+      "FundingProviderRead": {
+        "properties": {
+          "funding_provider_id": {
+            "type": "string",
+            "title": "Funding Provider Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "provider_type": {
+            "type": "string",
+            "title": "Provider Type"
+          },
+          "legal_name": {
+            "type": "string",
+            "title": "Legal Name"
+          },
+          "website": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website"
+          },
+          "mandate_summary": {
+            "type": "string",
+            "title": "Mandate Summary"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "funding_provider_id",
+          "tenant_id",
+          "provider_type",
+          "legal_name",
+          "website",
+          "mandate_summary",
+          "status"
+        ],
+        "title": "FundingProviderRead"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LeadCreate": {
+        "properties": {
+          "prospective_client_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Prospective Client Name"
+          },
+          "opportunity_type": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Opportunity Type"
+          },
+          "estimated_amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Estimated Amount"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "default": "BRL"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prospective_client_name",
+          "opportunity_type",
+          "estimated_amount"
+        ],
+        "title": "LeadCreate"
+      },
+      "LeadRead": {
+        "properties": {
+          "lead_id": {
+            "type": "string",
+            "title": "Lead Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "prospective_client_name": {
+            "type": "string",
+            "title": "Prospective Client Name"
+          },
+          "opportunity_type": {
+            "type": "string",
+            "title": "Opportunity Type"
+          },
+          "estimated_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Estimated Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lead_id",
+          "tenant_id",
+          "prospective_client_name",
+          "opportunity_type",
+          "estimated_amount",
+          "currency",
+          "status"
+        ],
+        "title": "LeadRead"
+      },
+      "MatchRead": {
+        "properties": {
+          "match_id": {
+            "type": "string",
+            "title": "Match Id"
+          },
+          "credit_request_id": {
+            "type": "string",
+            "title": "Credit Request Id"
+          },
+          "funding_product_id": {
+            "type": "string",
+            "title": "Funding Product Id"
+          },
+          "borrower_tenant_id": {
+            "type": "string",
+            "title": "Borrower Tenant Id"
+          },
+          "funder_tenant_id": {
+            "type": "string",
+            "title": "Funder Tenant Id"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          },
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Gaps"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "assigned_agent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Agent Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "match_id",
+          "credit_request_id",
+          "funding_product_id",
+          "borrower_tenant_id",
+          "funder_tenant_id",
+          "score",
+          "eligible",
+          "reasons",
+          "gaps",
+          "status",
+          "assigned_agent_id"
+        ],
+        "title": "MatchRead"
+      },
+      "MatchStatusUpdate": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "pattern": "^(AGENT_REVIEW|APPROVED_TO_CONTACT|SENT|INTERESTED|DILIGENCE|NEGOTIATION|CONVERTED|DECLINED|EXPIRED|BLOCKED)$",
+            "title": "Status"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Reason"
+          },
+          "visibility": {
+            "type": "string",
+            "pattern": "^(INTERNAL|BORROWER|FUNDER|PARTNER)$",
+            "title": "Visibility",
+            "default": "INTERNAL"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "reason"
+        ],
+        "title": "MatchStatusUpdate"
+      },
+      "OpportunityCreate": {
+        "properties": {
+          "representation_authorization_id": {
+            "type": "string",
+            "title": "Representation Authorization Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 3,
+            "title": "Purpose"
+          }
+        },
+        "type": "object",
+        "required": [
+          "representation_authorization_id",
+          "title",
+          "purpose"
+        ],
+        "title": "OpportunityCreate"
+      },
+      "OpportunityRead": {
+        "properties": {
+          "opportunity_id": {
+            "type": "string",
+            "title": "Opportunity Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "opportunity_type": {
+            "type": "string",
+            "title": "Opportunity Type"
+          },
+          "requested_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Requested Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "opportunity_id",
+          "tenant_id",
+          "title",
+          "opportunity_type",
+          "requested_amount",
+          "currency",
+          "purpose",
+          "stage",
+          "version"
+        ],
+        "title": "OpportunityRead"
+      },
+      "PartnerProfileCreate": {
+        "properties": {
+          "partner_type": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Partner Type"
+          },
+          "focus_regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Focus Regions"
+          },
+          "commercial_terms": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Commercial Terms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "partner_type"
+        ],
+        "title": "PartnerProfileCreate"
+      },
+      "PartnerProfileRead": {
+        "properties": {
+          "partner_profile_id": {
+            "type": "string",
+            "title": "Partner Profile Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "partner_type": {
+            "type": "string",
+            "title": "Partner Type"
+          },
+          "focus_regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Focus Regions"
+          },
+          "commercial_terms": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Commercial Terms"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "partner_profile_id",
+          "tenant_id",
+          "partner_type",
+          "focus_regions",
+          "commercial_terms",
+          "status"
+        ],
+        "title": "PartnerProfileRead"
+      },
+      "QualificationCreate": {
+        "properties": {
+          "result": {
+            "type": "string",
+            "pattern": "^(ELIGIBLE|CONDITIONALLY_ELIGIBLE|INFORMATION_REQUIRED|NOT_ELIGIBLE)$",
+            "title": "Result"
+          },
+          "conclusion": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 3,
+            "title": "Conclusion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "result",
+          "conclusion"
+        ],
+        "title": "QualificationCreate"
+      },
+      "QualificationRead": {
+        "properties": {
+          "qualification_id": {
+            "type": "string",
+            "title": "Qualification Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "opportunity_id": {
+            "type": "string",
+            "title": "Opportunity Id"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result"
+          },
+          "conclusion": {
+            "type": "string",
+            "title": "Conclusion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "qualification_id",
+          "tenant_id",
+          "opportunity_id",
+          "result",
+          "conclusion"
+        ],
+        "title": "QualificationRead"
+      },
+      "RepresentationCreate": {
+        "properties": {
+          "lead_id": {
+            "type": "string",
+            "title": "Lead Id"
+          },
+          "represented_tenant_id": {
+            "type": "string",
+            "title": "Represented Tenant Id"
+          },
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Actions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lead_id",
+          "represented_tenant_id"
+        ],
+        "title": "RepresentationCreate"
+      },
+      "RepresentationRead": {
+        "properties": {
+          "authorization_id": {
+            "type": "string",
+            "title": "Authorization Id"
+          },
+          "originator_tenant_id": {
+            "type": "string",
+            "title": "Originator Tenant Id"
+          },
+          "represented_tenant_id": {
+            "type": "string",
+            "title": "Represented Tenant Id"
+          },
+          "lead_id": {
+            "type": "string",
+            "title": "Lead Id"
+          },
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Actions"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorization_id",
+          "originator_tenant_id",
+          "represented_tenant_id",
+          "lead_id",
+          "allowed_actions",
+          "status"
+        ],
+        "title": "RepresentationRead"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
