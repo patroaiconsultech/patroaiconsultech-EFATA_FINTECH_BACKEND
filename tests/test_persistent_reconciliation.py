@@ -13,10 +13,12 @@ from app.models import (
 from app.persistent_reconciliation import PersistentReconciliationService
 from app.post_closing import CommissionStatus
 from app.reconciliation_engine import ReconciliationDecision, SettlementEvent
+from tests.reconciliation_test_support import ensure_marketplace_match
 
 
 def eligible_commission(service, ids, *, amount=Decimal("5000000"), contract_id="contract-1", invoice="INV-1"):
     with SessionLocal() as db:
+        ensure_marketplace_match(db, ids, match_id="match-1")
         entry = service.register_commission(
             db,
             match_id="match-1",

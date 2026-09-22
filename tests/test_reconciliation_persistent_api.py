@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 
+from app.db import SessionLocal
+from tests.reconciliation_test_support import ensure_marketplace_match
+
 
 def commission_payload(ids, *, match_id="match-api-1", contract_id="contract-api-1"):
     return {
@@ -28,6 +31,10 @@ def settlement_payload(ids, *, event_id="settlement-api-1", amount="38000.00", m
 
 def test_operator_can_manage_review_queue_and_outbox(client, ids, auth_headers):
     headers = auth_headers(ids["analyst_user"], ids["platform_tenant"])
+
+    with SessionLocal() as db:
+        ensure_marketplace_match(db, ids, match_id="match-api-1")
+        db.commit()
 
     created = client.post(
         "/api/v1/reconciliation/persistent/commissions",
