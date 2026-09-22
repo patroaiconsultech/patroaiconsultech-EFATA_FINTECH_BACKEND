@@ -99,7 +99,7 @@ class CommissionLedgerEntry:
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         return CommissionLedgerEntry(
-            commission_id=f"commission-{uuid4()}",
+            commission_id=str(uuid4()),
             match_id=match_id,
             beneficiary_tenant_id=beneficiary_tenant_id,
             contract_id=contract_id,
