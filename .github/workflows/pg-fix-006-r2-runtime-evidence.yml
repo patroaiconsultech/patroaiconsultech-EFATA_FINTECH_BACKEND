@@ -1,10 +1,15 @@
-name: postgres-targeted-diagnostic
+name: pg-fix-006-r2-runtime-evidence
 
 on:
   workflow_dispatch:
+    inputs:
+      migration_approval:
+        description: 'Type APPROVE_PG_FIX_006_R2_MIGRATION_TEST_EXECUTION'
+        required: true
+        type: string
 
 jobs:
-  targeted-postgres-diagnostic:
+  pg-fix-006-r2-evidence:
     runs-on: ubuntu-latest
 
     services:
@@ -23,22 +28,48 @@ jobs:
           --health-retries 12
 
     env:
+      BASELINE_SHA: 089dfc42842c48a0129643b238b829a65c94fac6
       FINTECH_APP_ENV: test
       FINTECH_DATABASE_URL: postgresql+psycopg://fintech:fintech_ci_only@localhost:5432/fintech_ci
       FINTECH_AUTH_PROVIDER: mock
-      RUN_POSTGRES_INTEGRATION: "1"
+      FINTECH_EFATA_MODE: mock
+      FINTECH_EFATA_PLATFORM_BRIDGE_ENABLED: "false"
 
     steps:
-      - name: Checkout exact failing backend commit
+      - name: Human migration approval gate
+        shell: bash
+        run: |
+          test "${{ inputs.migration_approval }}" = "APPROVE_PG_FIX_006_R2_MIGRATION_TEST_EXECUTION"
+          echo "human_migration_approval=CONFIRMED_FOR_EPHEMERAL_POSTGRES_TEST_ONLY"
+
+      - name: Checkout exact failing baseline commit
         uses: actions/checkout@v4
         with:
           ref: 089dfc42842c48a0129643b238b829a65c94fac6
 
-      - name: Confirm code-under-test SHA
+      - name: Confirm baseline SHA
+        shell: bash
         run: |
-          echo "EXPECTED_SHA=089dfc42842c48a0129643b238b829a65c94fac6"
-          echo "ACTUAL_SHA=$(git rev-parse HEAD)"
-          test "$(git rev-parse HEAD)" = "089dfc42842c48a0129643b238b829a65c94fac6"
+          echo "EXPECTED_BASELINE_SHA=$BASELINE_SHA"
+          echo "ACTUAL_BASELINE_SHA=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$BASELINE_SHA"
+
+      - name: Overlay exact AO-01 approved PG_FIX_006 R2 proposal in working tree
+        shell: bash
+        run: |
+          cat > /tmp/pg_fix_006_r2_payload.b64 <<'PAYLOAD'
+          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
+          PAYLOAD
+          base64 -d /tmp/pg_fix_006_r2_payload.b64 > /tmp/pg_fix_006_r2.tar.gz
+          echo "7938c2c1a668fb3d3f84e32ca535b673608b5268bc4a403c07d57b3436ff7ef8  /tmp/pg_fix_006_r2.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/pg_fix_006_r2.tar.gz -C .
+          echo "functional_commit_created=false"
+          echo "proposal_overlay_applied_to_worktree=true"
+
+      - name: Verify exact proposed file hashes
+        shell: bash
+        run: |
+          echo "4fe3069f70dc73602b5f4bdf852a1c82cd40afcac257f6741bb3681595d2bd0b  app/models.py" | sha256sum -c -\n          echo "7fda5c40427dd378913a89d8501575576192fa9721560f64e339729ce79d9feb  migrations/versions/0010_audit_resource_id_r11.py" | sha256sum -c -\n          echo "65cf7665353d1d5f501ea51729ef5f84e9be823fce70901a539dc846529ed9c9  tests/test_audit_resource_id_contract_pgfix006.py" | sha256sum -c -\n          echo "6e0393346d5c56734d1488fee8702942f6eb0a06aa92b0c4d4306de0de4298d1  tests/test_audit_resource_id_migration_postgres_pgfix006.py" | sha256sum -c -\n
 
       - name: Setup uv / Python 3.13
         uses: astral-sh/setup-uv@v6
@@ -49,11 +80,11 @@ jobs:
         run: uv sync --frozen --extra dev
 
       - name: Prove PostgreSQL runtime
+        shell: bash
         run: |
-          uv run python - <<'PY'
+          uv run python - <<'PY' | tee evidence_00_postgres_runtime.log
           import os
           from sqlalchemy import create_engine, text
-
           engine = create_engine(os.environ["FINTECH_DATABASE_URL"])
           with engine.connect() as connection:
               row = connection.execute(
@@ -69,19 +100,125 @@ jobs:
           engine.dispose()
           PY
 
-      - name: Alembic upgrade head
-        run: uv run alembic upgrade head
+      - name: Migration proof — legacy 36 to 255 / rollback / drift guards
+        shell: bash
+        env:
+          RUN_POSTGRES_MIGRATION_TESTS: "1"
+        run: |
+          set -o pipefail
+          uv run pytest -vv -x --tb=long -s             tests/test_audit_resource_id_migration_postgres_pgfix006.py             2>&1 | tee evidence_01_migration_proof.log
 
-      - name: Run single failing test with full traceback
+      - name: Prepare functional fintech_ci at Alembic head
         shell: bash
         run: |
           set -o pipefail
-          uv run pytest             -vv             -x             --tb=long             -s             tests/test_reconciliation_persistent_api.py::test_operator_can_manage_review_queue_and_outbox             2>&1 | tee targeted_postgres_diagnostic.log
+          uv run alembic upgrade head 2>&1 | tee evidence_02_upgrade_head.log
+          uv run python - <<'PY' | tee evidence_03_schema_contract.log
+          import os
+          from sqlalchemy import create_engine, inspect
+          engine = create_engine(os.environ["FINTECH_DATABASE_URL"])
+          with engine.connect() as connection:
+              col = next(
+                  c for c in inspect(connection).get_columns("platform_audit_events")
+                  if c["name"] == "resource_id"
+              )
+              print(f"platform_audit_events.resource_id.length={col['type'].length}")
+              assert int(col["type"].length) == 255
+          engine.dispose()
+          PY
 
-      - name: Upload full diagnostic evidence
+      - name: Targeted settlement regression
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest -vv -x --tb=long -s             tests/test_reconciliation_persistent_api.py::test_operator_can_manage_review_queue_and_outbox             2>&1 | tee evidence_04_targeted_settlement.log
+
+      - name: PostgreSQL concurrency
+        shell: bash
+        env:
+          RUN_POSTGRES_INTEGRATION: "1"
+        run: |
+          set -o pipefail
+          uv run pytest -vv -x --tb=long -s             tests/test_postgres_concurrency.py             tests/test_postgresql_atomic_concurrency.py             2>&1 | tee evidence_05_concurrency.log
+
+      - name: Full backend suite on PostgreSQL
+        shell: bash
+        env:
+          RUN_POSTGRES_INTEGRATION: "1"
+        run: |
+          set -o pipefail
+          uv run pytest -vv --tb=long             2>&1 | tee evidence_06_full_backend_postgres.log
+
+      - name: Recreate clean fintech_ci for fresh-db gate
+        shell: bash
+        run: |
+          uv run python - <<'PY' | tee evidence_07_fresh_db_recreate.log
+          from sqlalchemy import create_engine
+          admin = create_engine(
+              "postgresql+psycopg://fintech:fintech_ci_only@localhost:5432/postgres",
+              isolation_level="AUTOCOMMIT",
+          )
+          with admin.connect() as c:
+              c.exec_driver_sql("DROP DATABASE IF EXISTS fintech_ci WITH (FORCE)")
+              c.exec_driver_sql("CREATE DATABASE fintech_ci")
+          admin.dispose()
+          print("fresh_database=fintech_ci")
+          PY
+
+      - name: Fresh DB PostgreSQL proof gate
+        shell: bash
+        env:
+          RUN_POSTGRES_INTEGRATION: "1"
+          FINTECH_POSTGRES_GATE_CONFIRM: I_UNDERSTAND_THIS_DATABASE_WILL_BE_DOWNGRADED
+          FINTECH_POSTGRES_GATE_ALLOWED_HOSTS: localhost
+        run: |
+          set -o pipefail
+          uv run python scripts/postgres_gate.py             2>&1 | tee evidence_08_postgres_gate_console.log
+
+      - name: Final Alembic check and schema contract
+        if: success()
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run alembic check 2>&1 | tee evidence_09_alembic_check.log
+          uv run python - <<'PY' | tee evidence_10_final_schema.log
+          import os
+          from sqlalchemy import create_engine, inspect, text
+          engine = create_engine(os.environ["FINTECH_DATABASE_URL"])
+          with engine.connect() as c:
+              col = next(
+                  x for x in inspect(c).get_columns("platform_audit_events")
+                  if x["name"] == "resource_id"
+              )
+              revision = c.execute(text("select version_num from alembic_version")).scalar_one()
+              print(f"alembic_revision={revision}")
+              print(f"resource_id_length={col['type'].length}")
+              assert int(col["type"].length) == 255
+          engine.dispose()
+          PY
+
+      - name: Write evidence manifest
+        if: always()
+        shell: bash
+        run: |
+          cat > pg_fix_006_r2_runtime_evidence_manifest.txt <<EOF
+          proposal=PG_FIX_006_R2
+          baseline_sha=$BASELINE_SHA
+          functional_commit_created=false
+          migration_environment=ephemeral_postgresql_17
+          production_migration_executed=false
+          production_deploy_executed=false
+          proposal_payload_sha256=7938c2c1a668fb3d3f84e32ca535b673608b5268bc4a403c07d57b3436ff7ef8
+          EOF
+          git status --short >> pg_fix_006_r2_runtime_evidence_manifest.txt || true
+
+      - name: Upload complete runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: postgres-targeted-diagnostic-log
-          path: targeted_postgres_diagnostic.log
+          name: pg-fix-006-r2-runtime-evidence
+          path: |
+            evidence_*.log
+            postgres_gate_report.json
+            pg_fix_006_r2_runtime_evidence_manifest.txt
           if-no-files-found: warn
