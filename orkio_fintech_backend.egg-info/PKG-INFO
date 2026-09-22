@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: orkio-fintech-backend
+Version: 0.1.0
+Summary: Greenfield backend for the ORKIO fintech ecosystem.
+Requires-Python: <3.14,>=3.13
+Requires-Dist: fastapi==0.128.2
+Requires-Dist: uvicorn==0.48.0
+Requires-Dist: sqlalchemy==2.0.50
+Requires-Dist: pydantic==2.13.4
+Requires-Dist: pydantic-settings==2.14.1
+Requires-Dist: alembic==1.18.4
+Requires-Dist: httpx==0.28.1
+Requires-Dist: psycopg[binary]==3.3.4
+Requires-Dist: cryptography==46.0.3
+Provides-Extra: dev
+Requires-Dist: pytest==9.0.2; extra == "dev"
