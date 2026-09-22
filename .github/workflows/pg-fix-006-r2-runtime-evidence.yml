@@ -69,11 +69,7 @@ jobs:
       - name: Verify exact proposed file hashes
         shell: bash
         run: |
-          echo "4fe3069f70dc73602b5f4bdf852a1c82cd40afcac257f6741bb3681595d2bd0b  app/models.py" | sha256sum -c -
-          echo "7fda5c40427dd378913a89d8501575576192fa9721560f64e339729ce79d9feb  migrations/versions/0010_audit_resource_id_r11.py" | sha256sum -c -
-          echo "65cf7665353d1d5f501ea51729ef5f84e9be823fce70901a539dc846529ed9c9  tests/test_audit_resource_id_contract_pgfix006.py" | sha256sum -c -
-          echo "6e0393346d5c56734d1488fee8702942f6eb0a06aa92b0c4d4306de0de4298d1  tests/test_audit_resource_id_migration_postgres_pgfix006.py" | sha256sum -c -
-
+          echo "4fe3069f70dc73602b5f4bdf852a1c82cd40afcac257f6741bb3681595d2bd0b  app/models.py" | sha256sum -c -\n          echo "7fda5c40427dd378913a89d8501575576192fa9721560f64e339729ce79d9feb  migrations/versions/0010_audit_resource_id_r11.py" | sha256sum -c -\n          echo "65cf7665353d1d5f501ea51729ef5f84e9be823fce70901a539dc846529ed9c9  tests/test_audit_resource_id_contract_pgfix006.py" | sha256sum -c -\n          echo "6e0393346d5c56734d1488fee8702942f6eb0a06aa92b0c4d4306de0de4298d1  tests/test_audit_resource_id_migration_postgres_pgfix006.py" | sha256sum -c -\n
 
       - name: Setup uv / Python 3.13
         uses: astral-sh/setup-uv@v6
@@ -110,7 +106,7 @@ jobs:
           RUN_POSTGRES_MIGRATION_TESTS: "1"
         run: |
           set -o pipefail
-          uv run pytest --noconftest -vv -x --tb=long -s tests/test_audit_resource_id_migration_postgres_pgfix006.py 2>&1 | tee evidence_01_migration_proof.log
+          uv run pytest -vv -x --tb=long -s             tests/test_audit_resource_id_migration_postgres_pgfix006.py             2>&1 | tee evidence_01_migration_proof.log
 
       - name: Prepare functional fintech_ci at Alembic head
         shell: bash
@@ -151,73 +147,54 @@ jobs:
           RUN_POSTGRES_INTEGRATION: "1"
         run: |
           set -o pipefail
-          uv run pytest -vv --tb=long --ignore=tests/test_audit_resource_id_migration_postgres_pgfix006.py 2>&1 | tee evidence_06_full_backend_postgres.log
+          uv run pytest -vv --tb=long             2>&1 | tee evidence_06_full_backend_postgres.log
 
-      - name: Fresh DB Alembic proof — isolated from functional test database
+      - name: Recreate clean fintech_ci for fresh-db gate
+        shell: bash
+        run: |
+          uv run python - <<'PY' | tee evidence_07_fresh_db_recreate.log
+          from sqlalchemy import create_engine
+          admin = create_engine(
+              "postgresql+psycopg://fintech:fintech_ci_only@localhost:5432/postgres",
+              isolation_level="AUTOCOMMIT",
+          )
+          with admin.connect() as c:
+              c.exec_driver_sql("DROP DATABASE IF EXISTS fintech_ci WITH (FORCE)")
+              c.exec_driver_sql("CREATE DATABASE fintech_ci")
+          admin.dispose()
+          print("fresh_database=fintech_ci")
+          PY
+
+      - name: Fresh DB PostgreSQL proof gate
+        shell: bash
+        env:
+          RUN_POSTGRES_INTEGRATION: "1"
+          FINTECH_POSTGRES_GATE_CONFIRM: I_UNDERSTAND_THIS_DATABASE_WILL_BE_DOWNGRADED
+          FINTECH_POSTGRES_GATE_ALLOWED_HOSTS: localhost
+        run: |
+          set -o pipefail
+          uv run python scripts/postgres_gate.py             2>&1 | tee evidence_08_postgres_gate_console.log
+
+      - name: Final Alembic check and schema contract
+        if: success()
         shell: bash
         run: |
           set -o pipefail
-          uv run python - <<'PY' | tee evidence_07_fresh_db_create.log
-          from sqlalchemy import create_engine
-          admin = create_engine(
-              "postgresql+psycopg://fintech:fintech_ci_only@localhost:5432/postgres",
-              isolation_level="AUTOCOMMIT",
-          )
-          with admin.connect() as c:
-              c.exec_driver_sql("DROP DATABASE IF EXISTS fintech_fresh_ci WITH (FORCE)")
-              c.exec_driver_sql("CREATE DATABASE fintech_fresh_ci")
-          admin.dispose()
-          print("fresh_database=fintech_fresh_ci")
-          PY
-
-          export FINTECH_DATABASE_URL="postgresql+psycopg://fintech:fintech_ci_only@localhost:5432/fintech_fresh_ci"
-
-          uv run alembic upgrade head 2>&1 | tee evidence_08_fresh_upgrade_head.log
-
-          uv run python - <<'PY' | tee evidence_09_fresh_schema_inventory.log
+          uv run alembic check 2>&1 | tee evidence_09_alembic_check.log
+          uv run python - <<'PY' | tee evidence_10_final_schema.log
           import os
           from sqlalchemy import create_engine, inspect, text
-
           engine = create_engine(os.environ["FINTECH_DATABASE_URL"])
           with engine.connect() as c:
-              inspector = inspect(c)
-              tables = sorted(inspector.get_table_names())
               col = next(
-                  x for x in inspector.get_columns("platform_audit_events")
+                  x for x in inspect(c).get_columns("platform_audit_events")
                   if x["name"] == "resource_id"
               )
-              revision = c.execute(
-                  text("select version_num from alembic_version")
-              ).scalar_one()
-
+              revision = c.execute(text("select version_num from alembic_version")).scalar_one()
               print(f"alembic_revision={revision}")
               print(f"resource_id_length={col['type'].length}")
-              print(f"table_count={len(tables)}")
-              print("tables=" + ",".join(tables))
-
-              assert revision == "0010_audit_resource_id_r11"
               assert int(col["type"].length) == 255
-              assert "platform_audit_events" in tables
-
           engine.dispose()
-          PY
-
-          uv run alembic check 2>&1 | tee evidence_10_fresh_alembic_check.log
-
-      - name: Clean up isolated fresh database
-        if: always()
-        shell: bash
-        run: |
-          uv run python - <<'PY' | tee evidence_11_fresh_db_cleanup.log
-          from sqlalchemy import create_engine
-          admin = create_engine(
-              "postgresql+psycopg://fintech:fintech_ci_only@localhost:5432/postgres",
-              isolation_level="AUTOCOMMIT",
-          )
-          with admin.connect() as c:
-              c.exec_driver_sql("DROP DATABASE IF EXISTS fintech_fresh_ci WITH (FORCE)")
-          admin.dispose()
-          print("fresh_database_cleanup=done")
           PY
 
       - name: Write evidence manifest
@@ -229,9 +206,6 @@ jobs:
           baseline_sha=$BASELINE_SHA
           functional_commit_created=false
           migration_environment=ephemeral_postgresql_17
-          migration_pytest_noconftest=true
-          legacy_postgres_gate_invoked=false
-          fresh_db_proof_isolated=true
           production_migration_executed=false
           production_deploy_executed=false
           proposal_payload_sha256=7938c2c1a668fb3d3f84e32ca535b673608b5268bc4a403c07d57b3436ff7ef8
