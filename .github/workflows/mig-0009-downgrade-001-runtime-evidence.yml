@@ -142,23 +142,193 @@ jobs:
             tests/test_audit_resource_id_migration_postgres_pgfix006.py \
             2>&1 | tee evidence_03_pgfix006_migration.log
 
-      - name: Full PostgreSQL proof gate
+      - name: Pre-gate source identity proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum migrations/versions/0009_sync_job_study_link_r11.py \
+            | tee evidence_04a_migration_hash_before_gate.log
+          test "$(sha256sum migrations/versions/0009_sync_job_study_link_r11.py | awk '{print $1}')" \
+            = "2b874efc6f3492a4d0e81278ecd3c4c7e4cfd0b2074f3294ae23e949e1bf2a51"
+          uv run python - <<'PY' | tee evidence_04b_migration_ast_before_gate.log
+          import ast
+          from pathlib import Path
+
+          path = Path("migrations/versions/0009_sync_job_study_link_r11.py")
+          source = path.read_text(encoding="utf-8")
+          tree = ast.parse(source)
+
+          downgrade = next(
+              node for node in tree.body
+              if isinstance(node, ast.FunctionDef) and node.name == "downgrade"
+          )
+          calls = []
+          for node in ast.walk(downgrade):
+              if (
+                  isinstance(node, ast.Call)
+                  and isinstance(node.func, ast.Attribute)
+                  and isinstance(node.func.value, ast.Name)
+                  and node.func.value.id == "op"
+                  and node.func.attr == "drop_constraint"
+              ):
+                  calls.append(node)
+
+          assert calls, "no drop_constraint call found in downgrade"
+          first_args = [ast.dump(call.args[0]) for call in calls if call.args]
+          print("downgrade_drop_constraint_first_args=", first_args)
+          assert all(
+              not isinstance(call.args[0], ast.Constant)
+              for call in calls
+              if call.args
+          ), "downgrade still hard-codes a constraint name"
+          print("migration_ast_identity=PASS")
+          PY
+          find migrations/versions -type d -name __pycache__ -prune -exec rm -rf {} +
+
+      - name: Gate stage 1 - Alembic upgrade head
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run alembic upgrade head \
+            2>&1 | tee evidence_05_upgrade_head.log
+
+      - name: Gate stage 2 - PostgreSQL concurrency
         shell: bash
         env:
           RUN_POSTGRES_INTEGRATION: "1"
-          FINTECH_POSTGRES_GATE_CONFIRM: I_UNDERSTAND_THIS_DATABASE_WILL_BE_DOWNGRADED
-          FINTECH_POSTGRES_GATE_ALLOWED_HOSTS: localhost
         run: |
           set -o pipefail
-          uv run python scripts/postgres_gate.py \
-            2>&1 | tee evidence_04_postgres_gate_console.log
+          uv run pytest -q -rs \
+            tests/test_postgres_concurrency.py \
+            tests/test_postgresql_atomic_concurrency.py \
+            2>&1 | tee evidence_06_concurrency.log
 
-      - name: Final Alembic check
-        if: success()
+      - name: Gate stage 3 - Full backend PostgreSQL
+        shell: bash
+        env:
+          RUN_POSTGRES_INTEGRATION: "1"
+        run: |
+          set -o pipefail
+          uv run pytest -q -rs \
+            2>&1 | tee evidence_07_full_backend_postgres.log
+
+      - name: Post-suite source identity proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum migrations/versions/0009_sync_job_study_link_r11.py \
+            | tee evidence_08a_migration_hash_after_suite.log
+          test "$(sha256sum migrations/versions/0009_sync_job_study_link_r11.py | awk '{print $1}')" \
+            = "2b874efc6f3492a4d0e81278ecd3c4c7e4cfd0b2074f3294ae23e949e1bf2a51"
+          uv run python - <<'PY' | tee evidence_08b_migration_ast_after_suite.log
+          import ast
+          from pathlib import Path
+
+          path = Path("migrations/versions/0009_sync_job_study_link_r11.py")
+          source = path.read_text(encoding="utf-8")
+          tree = ast.parse(source)
+          downgrade = next(
+              node for node in tree.body
+              if isinstance(node, ast.FunctionDef) and node.name == "downgrade"
+          )
+          calls = [
+              node
+              for node in ast.walk(downgrade)
+              if (
+                  isinstance(node, ast.Call)
+                  and isinstance(node.func, ast.Attribute)
+                  and isinstance(node.func.value, ast.Name)
+                  and node.func.value.id == "op"
+                  and node.func.attr == "drop_constraint"
+              )
+          ]
+          assert calls
+          print(
+              "downgrade_drop_constraint_first_args=",
+              [ast.dump(call.args[0]) for call in calls if call.args],
+          )
+          assert all(
+              not isinstance(call.args[0], ast.Constant)
+              for call in calls
+              if call.args
+          )
+          print("migration_ast_identity=PASS")
+          PY
+          find migrations/versions -type d -name __pycache__ -prune -exec rm -rf {} +
+
+      - name: Gate stage 4 - Alembic downgrade base
         shell: bash
         run: |
           set -o pipefail
-          uv run alembic check 2>&1 | tee evidence_05_alembic_check.log
+          uv run alembic downgrade base \
+            2>&1 | tee evidence_09_downgrade_base.log
+
+      - name: Gate stage 5 - Downgrade schema inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY' | tee evidence_10_downgrade_inventory.log
+          import os
+          from sqlalchemy import create_engine, inspect
+
+          engine = create_engine(os.environ["FINTECH_DATABASE_URL"])
+          try:
+              inspector = inspect(engine)
+              tables = sorted(inspector.get_table_names())
+              unexpected = sorted(set(tables) - {"alembic_version"})
+              print("tables=", tables)
+              print("unexpected=", unexpected)
+              assert not unexpected, f"unexpected tables after downgrade: {unexpected}"
+              print("downgrade_schema_inventory=PASS")
+          finally:
+              engine.dispose()
+          PY
+
+      - name: Gate stage 6 - Alembic re-upgrade head
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run alembic upgrade head \
+            2>&1 | tee evidence_11_reupgrade_head.log
+
+      - name: Gate stage 7 - Alembic check
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run alembic check \
+            2>&1 | tee evidence_12_alembic_check.log
+
+      - name: Final schema and source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum migrations/versions/0009_sync_job_study_link_r11.py | awk '{print $1}')" \
+            = "2b874efc6f3492a4d0e81278ecd3c4c7e4cfd0b2074f3294ae23e949e1bf2a51"
+          uv run python - <<'PY' | tee evidence_13_final_schema.log
+          import os
+          from sqlalchemy import create_engine, inspect, text
+
+          engine = create_engine(os.environ["FINTECH_DATABASE_URL"])
+          try:
+              with engine.connect() as connection:
+                  revision = connection.execute(
+                      text("SELECT version_num FROM alembic_version")
+                  ).scalar_one()
+                  resource_column = next(
+                      column
+                      for column in inspect(connection).get_columns(
+                          "platform_audit_events"
+                      )
+                      if column["name"] == "resource_id"
+                  )
+                  print("alembic_revision=", revision)
+                  print("resource_id_length=", resource_column["type"].length)
+                  assert revision == "0010_audit_resource_id_r11"
+                  assert int(resource_column["type"].length) == 255
+                  print("final_schema=PASS")
+          finally:
+              engine.dispose()
+          PY
 
       - name: Write evidence manifest
         if: always()
