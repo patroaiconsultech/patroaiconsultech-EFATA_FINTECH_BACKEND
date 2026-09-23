@@ -72,12 +72,27 @@ jobs:
       - name: Verify scope is exactly two files
         shell: bash
         run: |
-          git status --short | tee evidence_00_git_status.log
-          changed="$(git status --porcelain | awk '{print $2}' | sort)"
+          status="$(git status --porcelain --untracked-files=all)"
+          printf '%s\n' "$status"
+
+          changed="$(printf '%s\n' "$status" | awk '{print $2}' | sort)"
           expected="$(printf '%s\n' \
             migrations/versions/0009_sync_job_study_link_r11.py \
             tests/test_migration_0009_downgrade_postgres.py | sort)"
-          test "$changed" = "$expected"
+
+          if [ "$changed" != "$expected" ]; then
+            echo "ERROR: worktree scope differs from approved two-file overlay"
+            echo "--- expected ---"
+            printf '%s\n' "$expected"
+            echo "--- actual ---"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+
+          # Persist evidence only after the scope assertion passes, so the
+          # evidence file cannot contaminate the assertion itself.
+          printf '%s\n' "$status" > evidence_00_git_status.log
+          echo "scope_guard=PASS"
 
       - name: Setup uv / Python 3.13
         uses: astral-sh/setup-uv@v6
