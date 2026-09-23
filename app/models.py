@@ -189,7 +189,7 @@ class AuditEvent(Base):
     actor_id: Mapped[str] = mapped_column(String(36), nullable=False)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    resource_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    resource_id: Mapped[str] = mapped_column(String(255), nullable=False)
     request_id: Mapped[str] = mapped_column(String(36), nullable=False)
     correlation_id: Mapped[str] = mapped_column(String(36), nullable=False)
     detail: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
