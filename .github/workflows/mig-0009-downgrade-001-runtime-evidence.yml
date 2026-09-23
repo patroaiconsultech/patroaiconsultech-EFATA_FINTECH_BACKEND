@@ -1,0 +1,172 @@
+name: mig-0009-downgrade-001-runtime-evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_test_approval:
+        description: 'Type APPROVE_MIG_0009_DOWNGRADE_001_EPHEMERAL_POSTGRES_TEST_EXECUTION'
+        required: true
+        type: string
+
+jobs:
+  mig-0009-runtime-evidence:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: fintech_ci
+          POSTGRES_USER: fintech
+          POSTGRES_PASSWORD: fintech_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fintech -d fintech_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      BASELINE_SHA: 045c7e4c7a124f1b69351916ec1c42c014cc9d68
+      FINTECH_APP_ENV: test
+      FINTECH_DATABASE_URL: postgresql+psycopg://fintech:fintech_ci_only@localhost:5432/fintech_ci
+      FINTECH_AUTH_PROVIDER: mock
+      FINTECH_EFATA_MODE: mock
+      FINTECH_EFATA_PLATFORM_BRIDGE_ENABLED: "false"
+
+    steps:
+      - name: Human migration-test approval gate
+        shell: bash
+        run: |
+          test "${{ inputs.migration_test_approval }}" = "APPROVE_MIG_0009_DOWNGRADE_001_EPHEMERAL_POSTGRES_TEST_EXECUTION"
+          echo "human_approval=CONFIRMED_FOR_EPHEMERAL_POSTGRES_CI_ONLY"
+
+      - name: Checkout exact baseline commit
+        uses: actions/checkout@v4
+        with:
+          ref: 045c7e4c7a124f1b69351916ec1c42c014cc9d68
+
+      - name: Confirm baseline SHA
+        shell: bash
+        run: |
+          echo "EXPECTED_BASELINE_SHA=$BASELINE_SHA"
+          echo "ACTUAL_BASELINE_SHA=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$BASELINE_SHA"
+
+      - name: Overlay exact AO-01 approved MIG-0009-DOWNGRADE-001 proposal
+        shell: bash
+        run: |
+          mkdir -p migrations/versions tests
+          printf '%s' 'IiIiTGluayBFUlAgc3luYyBqb2JzIHRvIHZpYWJpbGl0eSBzdHVkaWVzLgoKUmV2aXNpb24gSUQ6IDAwMDlfc3luY19qb2Jfc3R1ZHlfbGlua19yMTEKUmV2aXNlczogMDAwOF9lcnBfY29ubmVjdG9yX3J1bnRpbWVfcjExCiIiIgoKaW1wb3J0IHNxbGFsY2hlbXkgYXMgc2EKZnJvbSBhbGVtYmljIGltcG9ydCBvcAoKcmV2aXNpb24gPSAiMDAwOV9zeW5jX2pvYl9zdHVkeV9saW5rX3IxMSIKZG93bl9yZXZpc2lvbiA9ICIwMDA4X2VycF9jb25uZWN0b3JfcnVudGltZV9yMTEiCmJyYW5jaF9sYWJlbHMgPSBOb25lCmRlcGVuZHNfb24gPSBOb25lCgoKZGVmIHVwZ3JhZGUoKSAtPiBOb25lOgogICAgYmluZCA9IG9wLmdldF9iaW5kKCkKICAgIGluc3BlY3RvciA9IHNhLmluc3BlY3QoYmluZCkKICAgIGlmIG5vdCBpbnNwZWN0b3IuaGFzX3RhYmxlKCJpbnRlZ3JhdGlvbl9zeW5jX2pvYnMiKToKICAgICAgICByZXR1cm4KICAgIGNvbHVtbnMgPSB7CiAgICAgICAgY29sdW1uWyJuYW1lIl0KICAgICAgICBmb3IgY29sdW1uIGluIGluc3BlY3Rvci5nZXRfY29sdW1ucygiaW50ZWdyYXRpb25fc3luY19qb2JzIikKICAgIH0KICAgIGlmICJzdHVkeV9pZCIgbm90IGluIGNvbHVtbnM6CiAgICAgICAgc3R1ZHlfY29sdW1uID0gc2EuQ29sdW1uKCJzdHVkeV9pZCIsIHNhLlN0cmluZyhsZW5ndGg9MzYpLCBudWxsYWJsZT1UcnVlKQogICAgICAgIGlmIGJpbmQuZGlhbGVjdC5uYW1lID09ICJzcWxpdGUiOgogICAgICAgICAgICB3aXRoIG9wLmJhdGNoX2FsdGVyX3RhYmxlKAogICAgICAgICAgICAgICAgImludGVncmF0aW9uX3N5bmNfam9icyIsCiAgICAgICAgICAgICAgICByZWNyZWF0ZT0iYWx3YXlzIiwKICAgICAgICAgICAgKSBhcyBiYXRjaF9vcDoKICAgICAgICAgICAgICAgIGJhdGNoX29wLmFkZF9jb2x1bW4oc3R1ZHlfY29sdW1uKQogICAgICAgICAgICAgICAgYmF0Y2hfb3AuY3JlYXRlX2ZvcmVpZ25fa2V5KAogICAgICAgICAgICAgICAgICAgICJma19zeW5jX2pvYl9zdHVkeSIsCiAgICAgICAgICAgICAgICAgICAgInZpYWJpbGl0eV9zdHVkaWVzIiwKICAgICAgICAgICAgICAgICAgICBbInN0dWR5X2lkIl0sCiAgICAgICAgICAgICAgICAgICAgWyJzdHVkeV9pZCJdLAogICAgICAgICAgICAgICAgKQogICAgICAgIGVsc2U6CiAgICAgICAgICAgIG9wLmFkZF9jb2x1bW4oImludGVncmF0aW9uX3N5bmNfam9icyIsIHN0dWR5X2NvbHVtbikKICAgICAgICAgICAgb3AuY3JlYXRlX2ZvcmVpZ25fa2V5KAogICAgICAgICAgICAgICAgImZrX3N5bmNfam9iX3N0dWR5IiwKICAgICAgICAgICAgICAgICJpbnRlZ3JhdGlvbl9zeW5jX2pvYnMiLAogICAgICAgICAgICAgICAgInZpYWJpbGl0eV9zdHVkaWVzIiwKICAgICAgICAgICAgICAgIFsic3R1ZHlfaWQiXSwKICAgICAgICAgICAgICAgIFsic3R1ZHlfaWQiXSwKICAgICAgICAgICAgKQogICAgaW5zcGVjdG9yID0gc2EuaW5zcGVjdChiaW5kKQogICAgaW5kZXhfbmFtZXMgPSB7CiAgICAgICAgaW5kZXhbIm5hbWUiXQogICAgICAgIGZvciBpbmRleCBpbiBpbnNwZWN0b3IuZ2V0X2luZGV4ZXMoImludGVncmF0aW9uX3N5bmNfam9icyIpCiAgICAgICAgaWYgaW5kZXguZ2V0KCJuYW1lIikKICAgIH0KICAgIGlmICJpeF9zeW5jX2pvYl9zdHVkeV9jcmVhdGVkIiBub3QgaW4gaW5kZXhfbmFtZXM6CiAgICAgICAgb3AuY3JlYXRlX2luZGV4KAogICAgICAgICAgICAiaXhfc3luY19qb2Jfc3R1ZHlfY3JlYXRlZCIsCiAgICAgICAgICAgICJpbnRlZ3JhdGlvbl9zeW5jX2pvYnMiLAogICAgICAgICAgICBbInN0dWR5X2lkIiwgImNyZWF0ZWRfYXQiXSwKICAgICAgICApCgoKZGVmIGRvd25ncmFkZSgpIC0+IE5vbmU6CiAgICBiaW5kID0gb3AuZ2V0X2JpbmQoKQogICAgaW5zcGVjdG9yID0gc2EuaW5zcGVjdChiaW5kKQogICAgaWYgbm90IGluc3BlY3Rvci5oYXNfdGFibGUoImludGVncmF0aW9uX3N5bmNfam9icyIpOgogICAgICAgIHJldHVybgoKICAgIGNvbHVtbnMgPSB7CiAgICAgICAgY29sdW1uWyJuYW1lIl0KICAgICAgICBmb3IgY29sdW1uIGluIGluc3BlY3Rvci5nZXRfY29sdW1ucygiaW50ZWdyYXRpb25fc3luY19qb2JzIikKICAgIH0KICAgIGlmICJzdHVkeV9pZCIgbm90IGluIGNvbHVtbnM6CiAgICAgICAgcmV0dXJuCiAgICBpbmRleF9uYW1lcyA9IHsKICAgICAgICBpbmRleFsibmFtZSJdCiAgICAgICAgZm9yIGluZGV4IGluIGluc3BlY3Rvci5nZXRfaW5kZXhlcygiaW50ZWdyYXRpb25fc3luY19qb2JzIikKICAgICAgICBpZiBpbmRleC5nZXQoIm5hbWUiKQogICAgfQogICAgaWYgIml4X3N5bmNfam9iX3N0dWR5X2NyZWF0ZWQiIGluIGluZGV4X25hbWVzOgogICAgICAgIG9wLmRyb3BfaW5kZXgoCiAgICAgICAgICAgICJpeF9zeW5jX2pvYl9zdHVkeV9jcmVhdGVkIiwKICAgICAgICAgICAgdGFibGVfbmFtZT0iaW50ZWdyYXRpb25fc3luY19qb2JzIiwKICAgICAgICApCiAgICBpZiBiaW5kLmRpYWxlY3QubmFtZSA9PSAic3FsaXRlIjoKICAgICAgICB3aXRoIG9wLmJhdGNoX2FsdGVyX3RhYmxlKAogICAgICAgICAgICAiaW50ZWdyYXRpb25fc3luY19qb2JzIiwKICAgICAgICAgICAgcmVjcmVhdGU9ImFsd2F5cyIsCiAgICAgICAgKSBhcyBiYXRjaF9vcDoKICAgICAgICAgICAgYmF0Y2hfb3AuZHJvcF9jb2x1bW4oInN0dWR5X2lkIikKICAgIGVsc2U6CiAgICAgICAgaW5zcGVjdG9yID0gc2EuaW5zcGVjdChiaW5kKQogICAgICAgIHN0dWR5X2ZrX25hbWVzID0gewogICAgICAgICAgICBmb3JlaWduX2tleVsibmFtZSJdCiAgICAgICAgICAgIGZvciBmb3JlaWduX2tleSBpbiBpbnNwZWN0b3IuZ2V0X2ZvcmVpZ25fa2V5cygKICAgICAgICAgICAgICAgICJpbnRlZ3JhdGlvbl9zeW5jX2pvYnMiCiAgICAgICAgICAgICkKICAgICAgICAgICAgaWYgZm9yZWlnbl9rZXkuZ2V0KCJuYW1lIikKICAgICAgICAgICAgYW5kIGZvcmVpZ25fa2V5LmdldCgiY29uc3RyYWluZWRfY29sdW1ucyIpID09IFsic3R1ZHlfaWQiXQogICAgICAgIH0KICAgICAgICBmb3IgZm9yZWlnbl9rZXlfbmFtZSBpbiBzb3J0ZWQoc3R1ZHlfZmtfbmFtZXMpOgogICAgICAgICAgICBvcC5kcm9wX2NvbnN0cmFpbnQoCiAgICAgICAgICAgICAgICBmb3JlaWduX2tleV9uYW1lLAogICAgICAgICAgICAgICAgImludGVncmF0aW9uX3N5bmNfam9icyIsCiAgICAgICAgICAgICAgICB0eXBlXz0iZm9yZWlnbmtleSIsCiAgICAgICAgICAgICkKICAgICAgICBvcC5kcm9wX2NvbHVtbigiaW50ZWdyYXRpb25fc3luY19qb2JzIiwgInN0dWR5X2lkIikK' | base64 -d > migrations/versions/0009_sync_job_study_link_r11.py
+          printf '%s' 'ZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKaW1wb3J0IG9zCmltcG9ydCBzdWJwcm9jZXNzCmltcG9ydCBzeXMKZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmZyb20gdXVpZCBpbXBvcnQgdXVpZDQKCmltcG9ydCBweXRlc3QKZnJvbSBzcWxhbGNoZW15IGltcG9ydCBjcmVhdGVfZW5naW5lLCBpbnNwZWN0LCB0ZXh0CmZyb20gc3FsYWxjaGVteS5lbmdpbmUgaW1wb3J0IG1ha2VfdXJsCgoKcHl0ZXN0bWFyayA9IHB5dGVzdC5tYXJrLnBvc3RncmVzCgpST09UID0gUGF0aChfX2ZpbGVfXykucmVzb2x2ZSgpLnBhcmVudHNbMV0KUkVWSVNJT05fMDAwOCA9ICIwMDA4X2VycF9jb25uZWN0b3JfcnVudGltZV9yMTEiClJFVklTSU9OXzAwMDkgPSAiMDAwOV9zeW5jX2pvYl9zdHVkeV9saW5rX3IxMSIKSEVBRF9SRVZJU0lPTiA9ICIwMDEwX2F1ZGl0X3Jlc291cmNlX2lkX3IxMSIKCgpkZWYgX3Bvc3RncmVzX3NvdXJjZV91cmwoKToKICAgIHJhdyA9IG9zLmdldGVudigiRklOVEVDSF9EQVRBQkFTRV9VUkwiLCAiIikKICAgIGlmIG9zLmdldGVudigiUlVOX1BPU1RHUkVTX01JR1JBVElPTl9URVNUUyIpICE9ICIxIjoKICAgICAgICBweXRlc3Quc2tpcCgKICAgICAgICAgICAgInJlcXVpcmVzIFJVTl9QT1NUR1JFU19NSUdSQVRJT05fVEVTVFM9MSIsCiAgICAgICAgICAgIGFsbG93X21vZHVsZV9sZXZlbD1UcnVlLAogICAgICAgICkKICAgIGlmIG5vdCByYXcuc3RhcnRzd2l0aCgicG9zdGdyZXNxbCIpOgogICAgICAgIHB5dGVzdC5za2lwKAogICAgICAgICAgICAicmVxdWlyZXMgYSByZWFsIFBvc3RncmVTUUwgRklOVEVDSF9EQVRBQkFTRV9VUkwiLAogICAgICAgICAgICBhbGxvd19tb2R1bGVfbGV2ZWw9VHJ1ZSwKICAgICAgICApCiAgICByZXR1cm4gbWFrZV91cmwocmF3KQoKClNPVVJDRV9VUkwgPSBfcG9zdGdyZXNfc291cmNlX3VybCgpCgoKQHB5dGVzdC5maXh0dXJlKCkKZGVmIG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwoKToKICAgIHN1ZmZpeCA9IHV1aWQ0KCkuaGV4WzoxMl0KICAgIGRiX25hbWUgPSBmImZpbnRlY2hfbWlnMDAwOV9jaV97c3VmZml4fSIKCiAgICBhZG1pbl91cmwgPSBTT1VSQ0VfVVJMLnNldChkYXRhYmFzZT0icG9zdGdyZXMiKQogICAgYWRtaW5fZW5naW5lID0gY3JlYXRlX2VuZ2luZSgKICAgICAgICBhZG1pbl91cmwsCiAgICAgICAgaXNvbGF0aW9uX2xldmVsPSJBVVRPQ09NTUlUIiwKICAgICAgICBmdXR1cmU9VHJ1ZSwKICAgICkKICAgIHF1b3RlZCA9IGFkbWluX2VuZ2luZS5kaWFsZWN0LmlkZW50aWZpZXJfcHJlcGFyZXIucXVvdGUoZGJfbmFtZSkKCiAgICB3aXRoIGFkbWluX2VuZ2luZS5jb25uZWN0KCkgYXMgY29ubmVjdGlvbjoKICAgICAgICBjb25uZWN0aW9uLmV4ZWNfZHJpdmVyX3NxbChmIkNSRUFURSBEQVRBQkFTRSB7cXVvdGVkfSIpCgogICAgdGVzdF91cmwgPSBTT1VSQ0VfVVJMLnNldChkYXRhYmFzZT1kYl9uYW1lKQoKICAgIHRyeToKICAgICAgICB5aWVsZCB0ZXN0X3VybC5yZW5kZXJfYXNfc3RyaW5nKGhpZGVfcGFzc3dvcmQ9RmFsc2UpCiAgICBmaW5hbGx5OgogICAgICAgIHdpdGggYWRtaW5fZW5naW5lLmNvbm5lY3QoKSBhcyBjb25uZWN0aW9uOgogICAgICAgICAgICBjb25uZWN0aW9uLmV4ZWNfZHJpdmVyX3NxbCgKICAgICAgICAgICAgICAgIGYiRFJPUCBEQVRBQkFTRSBJRiBFWElTVFMge3F1b3RlZH0gV0lUSCAoRk9SQ0UpIgogICAgICAgICAgICApCiAgICAgICAgYWRtaW5fZW5naW5lLmRpc3Bvc2UoKQoKCmRlZiBfcnVuX2FsZW1iaWMoZGF0YWJhc2VfdXJsOiBzdHIsICphcmdzOiBzdHIpOgogICAgZW52ID0gb3MuZW52aXJvbi5jb3B5KCkKICAgIGVudlsiRklOVEVDSF9EQVRBQkFTRV9VUkwiXSA9IGRhdGFiYXNlX3VybAoKICAgIHJlc3VsdCA9IHN1YnByb2Nlc3MucnVuKAogICAgICAgIFtzeXMuZXhlY3V0YWJsZSwgIi1tIiwgImFsZW1iaWMiLCAqYXJnc10sCiAgICAgICAgY3dkPVJPT1QsCiAgICAgICAgZW52PWVudiwKICAgICAgICB0ZXh0PVRydWUsCiAgICAgICAgY2FwdHVyZV9vdXRwdXQ9VHJ1ZSwKICAgICAgICB0aW1lb3V0PTE4MCwKICAgICkKICAgIGlmIHJlc3VsdC5yZXR1cm5jb2RlICE9IDA6CiAgICAgICAgcmFpc2UgQXNzZXJ0aW9uRXJyb3IoCiAgICAgICAgICAgIGYiQWxlbWJpYyBjb21tYW5kIGZhaWxlZDoge2FyZ3N9XG4iCiAgICAgICAgICAgIGYic3Rkb3V0Olxue3Jlc3VsdC5zdGRvdXR9XG4iCiAgICAgICAgICAgIGYic3RkZXJyOlxue3Jlc3VsdC5zdGRlcnJ9IgogICAgICAgICkKICAgIHJldHVybiByZXN1bHQKCgpkZWYgX2NvbHVtbl9uYW1lcyhkYXRhYmFzZV91cmw6IHN0cikgLT4gc2V0W3N0cl06CiAgICBlbmdpbmUgPSBjcmVhdGVfZW5naW5lKGRhdGFiYXNlX3VybCwgZnV0dXJlPVRydWUpCiAgICB0cnk6CiAgICAgICAgd2l0aCBlbmdpbmUuY29ubmVjdCgpIGFzIGNvbm5lY3Rpb246CiAgICAgICAgICAgIHJldHVybiB7CiAgICAgICAgICAgICAgICBjb2x1bW5bIm5hbWUiXQogICAgICAgICAgICAgICAgZm9yIGNvbHVtbiBpbiBpbnNwZWN0KGNvbm5lY3Rpb24pLmdldF9jb2x1bW5zKAogICAgICAgICAgICAgICAgICAgICJpbnRlZ3JhdGlvbl9zeW5jX2pvYnMiCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgIH0KICAgIGZpbmFsbHk6CiAgICAgICAgZW5naW5lLmRpc3Bvc2UoKQoKCmRlZiBfZm9yZWlnbl9rZXlzKGRhdGFiYXNlX3VybDogc3RyKSAtPiBsaXN0W2RpY3RdOgogICAgZW5naW5lID0gY3JlYXRlX2VuZ2luZShkYXRhYmFzZV91cmwsIGZ1dHVyZT1UcnVlKQogICAgdHJ5OgogICAgICAgIHdpdGggZW5naW5lLmNvbm5lY3QoKSBhcyBjb25uZWN0aW9uOgogICAgICAgICAgICByZXR1cm4gaW5zcGVjdChjb25uZWN0aW9uKS5nZXRfZm9yZWlnbl9rZXlzKAogICAgICAgICAgICAgICAgImludGVncmF0aW9uX3N5bmNfam9icyIKICAgICAgICAgICAgKQogICAgZmluYWxseToKICAgICAgICBlbmdpbmUuZGlzcG9zZSgpCgoKZGVmIF9pbmRleF9uYW1lcyhkYXRhYmFzZV91cmw6IHN0cikgLT4gc2V0W3N0cl06CiAgICBlbmdpbmUgPSBjcmVhdGVfZW5naW5lKGRhdGFiYXNlX3VybCwgZnV0dXJlPVRydWUpCiAgICB0cnk6CiAgICAgICAgd2l0aCBlbmdpbmUuY29ubmVjdCgpIGFzIGNvbm5lY3Rpb246CiAgICAgICAgICAgIHJldHVybiB7CiAgICAgICAgICAgICAgICBpbmRleFsibmFtZSJdCiAgICAgICAgICAgICAgICBmb3IgaW5kZXggaW4gaW5zcGVjdChjb25uZWN0aW9uKS5nZXRfaW5kZXhlcygKICAgICAgICAgICAgICAgICAgICAiaW50ZWdyYXRpb25fc3luY19qb2JzIgogICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgICAgaWYgaW5kZXguZ2V0KCJuYW1lIikKICAgICAgICAgICAgfQogICAgZmluYWxseToKICAgICAgICBlbmdpbmUuZGlzcG9zZSgpCgoKZGVmIF9yZXZpc2lvbihkYXRhYmFzZV91cmw6IHN0cikgLT4gc3RyOgogICAgZW5naW5lID0gY3JlYXRlX2VuZ2luZShkYXRhYmFzZV91cmwsIGZ1dHVyZT1UcnVlKQogICAgdHJ5OgogICAgICAgIHdpdGggZW5naW5lLmNvbm5lY3QoKSBhcyBjb25uZWN0aW9uOgogICAgICAgICAgICByZXR1cm4gc3RyKAogICAgICAgICAgICAgICAgY29ubmVjdGlvbi5leGVjdXRlKAogICAgICAgICAgICAgICAgICAgIHRleHQoIlNFTEVDVCB2ZXJzaW9uX251bSBGUk9NIGFsZW1iaWNfdmVyc2lvbiIpCiAgICAgICAgICAgICAgICApLnNjYWxhcl9vbmUoKQogICAgICAgICAgICApCiAgICBmaW5hbGx5OgogICAgICAgIGVuZ2luZS5kaXNwb3NlKCkKCgpkZWYgX3N0dWR5X2ZrX25hbWVzKGRhdGFiYXNlX3VybDogc3RyKSAtPiBzZXRbc3RyXToKICAgIHJldHVybiB7CiAgICAgICAgZm9yZWlnbl9rZXlbIm5hbWUiXQogICAgICAgIGZvciBmb3JlaWduX2tleSBpbiBfZm9yZWlnbl9rZXlzKGRhdGFiYXNlX3VybCkKICAgICAgICBpZiBmb3JlaWduX2tleS5nZXQoIm5hbWUiKQogICAgICAgIGFuZCBmb3JlaWduX2tleS5nZXQoImNvbnN0cmFpbmVkX2NvbHVtbnMiKSA9PSBbInN0dWR5X2lkIl0KICAgIH0KCgpkZWYgX2ZvcmNlX2xlZ2FjeV8wMDA4X3dpdGhvdXRfc3R1ZHlfaWQoZGF0YWJhc2VfdXJsOiBzdHIpIC0+IE5vbmU6CiAgICBlbmdpbmUgPSBjcmVhdGVfZW5naW5lKGRhdGFiYXNlX3VybCwgZnV0dXJlPVRydWUpCiAgICB0cnk6CiAgICAgICAgd2l0aCBlbmdpbmUuYmVnaW4oKSBhcyBjb25uZWN0aW9uOgogICAgICAgICAgICBpbmRleGVzID0gewogICAgICAgICAgICAgICAgaW5kZXhbIm5hbWUiXQogICAgICAgICAgICAgICAgZm9yIGluZGV4IGluIGluc3BlY3QoY29ubmVjdGlvbikuZ2V0X2luZGV4ZXMoCiAgICAgICAgICAgICAgICAgICAgImludGVncmF0aW9uX3N5bmNfam9icyIKICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgICAgIGlmIGluZGV4LmdldCgibmFtZSIpCiAgICAgICAgICAgIH0KICAgICAgICAgICAgaWYgIml4X3N5bmNfam9iX3N0dWR5X2NyZWF0ZWQiIGluIGluZGV4ZXM6CiAgICAgICAgICAgICAgICBjb25uZWN0aW9uLmV4ZWN1dGUoCiAgICAgICAgICAgICAgICAgICAgdGV4dCgKICAgICAgICAgICAgICAgICAgICAgICAgIkRST1AgSU5ERVggIgogICAgICAgICAgICAgICAgICAgICAgICAiSUYgRVhJU1RTIGl4X3N5bmNfam9iX3N0dWR5X2NyZWF0ZWQiCiAgICAgICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgICAgKQogICAgICAgICAgICBjb2x1bW5zID0gewogICAgICAgICAgICAgICAgY29sdW1uWyJuYW1lIl0KICAgICAgICAgICAgICAgIGZvciBjb2x1bW4gaW4gaW5zcGVjdChjb25uZWN0aW9uKS5nZXRfY29sdW1ucygKICAgICAgICAgICAgICAgICAgICAiaW50ZWdyYXRpb25fc3luY19qb2JzIgogICAgICAgICAgICAgICAgKQogICAgICAgICAgICB9CiAgICAgICAgICAgIGlmICJzdHVkeV9pZCIgaW4gY29sdW1uczoKICAgICAgICAgICAgICAgIGNvbm5lY3Rpb24uZXhlY3V0ZSgKICAgICAgICAgICAgICAgICAgICB0ZXh0KAogICAgICAgICAgICAgICAgICAgICAgICAiQUxURVIgVEFCTEUgaW50ZWdyYXRpb25fc3luY19qb2JzICIKICAgICAgICAgICAgICAgICAgICAgICAgIkRST1AgQ09MVU1OIHN0dWR5X2lkIgogICAgICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgICAgICkKICAgIGZpbmFsbHk6CiAgICAgICAgZW5naW5lLmRpc3Bvc2UoKQoKICAgIGFzc2VydCBfcmV2aXNpb24oZGF0YWJhc2VfdXJsKSA9PSBSRVZJU0lPTl8wMDA4CiAgICBhc3NlcnQgInN0dWR5X2lkIiBub3QgaW4gX2NvbHVtbl9uYW1lcyhkYXRhYmFzZV91cmwpCgoKZGVmIHRlc3RfZG93bmdyYWRlXzAwMDlfaGFuZGxlc19ib290c3RyYXBfZmtfbmFtZSgKICAgIG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwsCik6CiAgICAjIFJlcHJvZHVjZXMgdGhlIENJIHBhdGg6IDAwMDEgdXNlcyBjdXJyZW50IEJhc2UubWV0YWRhdGEuY3JlYXRlX2FsbCgpLAogICAgIyBzbyBzdHVkeV9pZCBhbmQgaXRzIFBvc3RncmVTUUwtZ2VuZXJhdGVkIEZLIGFscmVhZHkgZXhpc3QgYmVmb3JlIDAwMDkuCiAgICBfcnVuX2FsZW1iaWMobWlncmF0aW9uX2RhdGFiYXNlX3VybCwgInVwZ3JhZGUiLCBSRVZJU0lPTl8wMDA5KQoKICAgIGFzc2VydCBfcmV2aXNpb24obWlncmF0aW9uX2RhdGFiYXNlX3VybCkgPT0gUkVWSVNJT05fMDAwOQogICAgYXNzZXJ0ICJzdHVkeV9pZCIgaW4gX2NvbHVtbl9uYW1lcyhtaWdyYXRpb25fZGF0YWJhc2VfdXJsKQoKICAgIHN0dWR5X2ZrX25hbWVzID0gX3N0dWR5X2ZrX25hbWVzKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwpCiAgICBhc3NlcnQgc3R1ZHlfZmtfbmFtZXMKICAgIGFzc2VydCAiZmtfc3luY19qb2Jfc3R1ZHkiIG5vdCBpbiBzdHVkeV9ma19uYW1lcwoKICAgIF9ydW5fYWxlbWJpYyhtaWdyYXRpb25fZGF0YWJhc2VfdXJsLCAiZG93bmdyYWRlIiwgUkVWSVNJT05fMDAwOCkKCiAgICBhc3NlcnQgX3JldmlzaW9uKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwpID09IFJFVklTSU9OXzAwMDgKICAgIGFzc2VydCAic3R1ZHlfaWQiIG5vdCBpbiBfY29sdW1uX25hbWVzKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwpCiAgICBhc3NlcnQgIml4X3N5bmNfam9iX3N0dWR5X2NyZWF0ZWQiIG5vdCBpbiBfaW5kZXhfbmFtZXMoCiAgICAgICAgbWlncmF0aW9uX2RhdGFiYXNlX3VybAogICAgKQoKCmRlZiB0ZXN0X2Rvd25ncmFkZV8wMDA5X2hhbmRsZXNfZmtfY3JlYXRlZF9ieV9yZXZpc2lvbl9pdHNlbGYoCiAgICBtaWdyYXRpb25fZGF0YWJhc2VfdXJsLAopOgogICAgX3J1bl9hbGVtYmljKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwsICJ1cGdyYWRlIiwgUkVWSVNJT05fMDAwOCkKICAgIF9mb3JjZV9sZWdhY3lfMDAwOF93aXRob3V0X3N0dWR5X2lkKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwpCgogICAgX3J1bl9hbGVtYmljKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwsICJ1cGdyYWRlIiwgUkVWSVNJT05fMDAwOSkKCiAgICBhc3NlcnQgX3JldmlzaW9uKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwpID09IFJFVklTSU9OXzAwMDkKICAgIGFzc2VydCAic3R1ZHlfaWQiIGluIF9jb2x1bW5fbmFtZXMobWlncmF0aW9uX2RhdGFiYXNlX3VybCkKICAgIGFzc2VydCAiZmtfc3luY19qb2Jfc3R1ZHkiIGluIF9zdHVkeV9ma19uYW1lcygKICAgICAgICBtaWdyYXRpb25fZGF0YWJhc2VfdXJsCiAgICApCgogICAgX3J1bl9hbGVtYmljKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwsICJkb3duZ3JhZGUiLCBSRVZJU0lPTl8wMDA4KQoKICAgIGFzc2VydCBfcmV2aXNpb24obWlncmF0aW9uX2RhdGFiYXNlX3VybCkgPT0gUkVWSVNJT05fMDAwOAogICAgYXNzZXJ0ICJzdHVkeV9pZCIgbm90IGluIF9jb2x1bW5fbmFtZXMobWlncmF0aW9uX2RhdGFiYXNlX3VybCkKCgpkZWYgdGVzdF9jbGVhbl9oZWFkX2Nhbl9kb3duZ3JhZGVfdG9fYmFzZV9hbmRfcmV1cGdyYWRlKAogICAgbWlncmF0aW9uX2RhdGFiYXNlX3VybCwKKToKICAgICMgRW5kLXRvLWVuZCBtaWdyYXRpb24tY2hhaW4gcHJvb2YuIE5vID4zNiBhdWRpdCByZXNvdXJjZV9pZCBpcyBpbnNlcnRlZCwKICAgICMgc28gcmV2aXNpb24gMDAxMCBpcyBleHBlY3RlZCB0byBiZSBzYWZlbHkgcmV2ZXJzaWJsZSBpbiB0aGlzIHNjZW5hcmlvLgogICAgX3J1bl9hbGVtYmljKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwsICJ1cGdyYWRlIiwgImhlYWQiKQogICAgYXNzZXJ0IF9yZXZpc2lvbihtaWdyYXRpb25fZGF0YWJhc2VfdXJsKSA9PSBIRUFEX1JFVklTSU9OCgogICAgX3J1bl9hbGVtYmljKG1pZ3JhdGlvbl9kYXRhYmFzZV91cmwsICJkb3duZ3JhZGUiLCAiYmFzZSIpCgogICAgZW5naW5lID0gY3JlYXRlX2VuZ2luZShtaWdyYXRpb25fZGF0YWJhc2VfdXJsLCBmdXR1cmU9VHJ1ZSkKICAgIHRyeToKICAgICAgICB3aXRoIGVuZ2luZS5jb25uZWN0KCkgYXMgY29ubmVjdGlvbjoKICAgICAgICAgICAgYXNzZXJ0IG5vdCBpbnNwZWN0KGNvbm5lY3Rpb24pLmhhc190YWJsZSgKICAgICAgICAgICAgICAgICJpbnRlZ3JhdGlvbl9zeW5jX2pvYnMiCiAgICAgICAgICAgICkKICAgIGZpbmFsbHk6CiAgICAgICAgZW5naW5lLmRpc3Bvc2UoKQoKICAgIF9ydW5fYWxlbWJpYyhtaWdyYXRpb25fZGF0YWJhc2VfdXJsLCAidXBncmFkZSIsICJoZWFkIikKICAgIGFzc2VydCBfcmV2aXNpb24obWlncmF0aW9uX2RhdGFiYXNlX3VybCkgPT0gSEVBRF9SRVZJU0lPTgo=' | base64 -d > tests/test_migration_0009_downgrade_postgres.py
+          echo "proposal_overlay_applied=true"
+          echo "functional_commit_created=false"
+
+      - name: Verify exact proposal hashes
+        shell: bash
+        run: |
+          echo "2b874efc6f3492a4d0e81278ecd3c4c7e4cfd0b2074f3294ae23e949e1bf2a51  migrations/versions/0009_sync_job_study_link_r11.py" | sha256sum -c -
+          echo "a9bf77575447665cde6d05ddd26bcdd3818779b5bce2a05cab24d659afd98d61  tests/test_migration_0009_downgrade_postgres.py" | sha256sum -c -
+
+      - name: Verify scope is exactly two files
+        shell: bash
+        run: |
+          git status --short | tee evidence_00_git_status.log
+          changed="$(git status --porcelain | awk '{print $2}' | sort)"
+          expected="$(printf '%s\n' \
+            migrations/versions/0009_sync_job_study_link_r11.py \
+            tests/test_migration_0009_downgrade_postgres.py | sort)"
+          test "$changed" = "$expected"
+
+      - name: Setup uv / Python 3.13
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install frozen dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Prove PostgreSQL runtime
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run python - <<'PY' | tee evidence_01_postgres_runtime.log
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["FINTECH_DATABASE_URL"])
+          with engine.connect() as c:
+              row = c.execute(text(
+                  "select version(), current_database(), current_user, "
+                  "current_setting('server_version_num')"
+              )).one()
+              print(f"postgres_version={row[0]}")
+              print(f"database={row[1]}")
+              print(f"current_user={row[2]}")
+              print(f"server_version_num={row[3]}")
+          engine.dispose()
+          PY
+
+      - name: MIG-0009 specific PostgreSQL migration proof
+        shell: bash
+        env:
+          RUN_POSTGRES_MIGRATION_TESTS: "1"
+        run: |
+          set -o pipefail
+          uv run pytest --noconftest -vv -x --tb=long -s \
+            tests/test_migration_0009_downgrade_postgres.py \
+            2>&1 | tee evidence_02_mig0009_specific.log
+
+      - name: PG_FIX_006 PostgreSQL migration proof
+        shell: bash
+        env:
+          RUN_POSTGRES_MIGRATION_TESTS: "1"
+        run: |
+          set -o pipefail
+          uv run pytest --noconftest -vv -x --tb=long -s \
+            tests/test_audit_resource_id_migration_postgres_pgfix006.py \
+            2>&1 | tee evidence_03_pgfix006_migration.log
+
+      - name: Full PostgreSQL proof gate
+        shell: bash
+        env:
+          RUN_POSTGRES_INTEGRATION: "1"
+          FINTECH_POSTGRES_GATE_CONFIRM: I_UNDERSTAND_THIS_DATABASE_WILL_BE_DOWNGRADED
+          FINTECH_POSTGRES_GATE_ALLOWED_HOSTS: localhost
+        run: |
+          set -o pipefail
+          uv run python scripts/postgres_gate.py \
+            2>&1 | tee evidence_04_postgres_gate_console.log
+
+      - name: Final Alembic check
+        if: success()
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run alembic check 2>&1 | tee evidence_05_alembic_check.log
+
+      - name: Write evidence manifest
+        if: always()
+        shell: bash
+        run: |
+          cat > mig_0009_runtime_evidence_manifest.txt <<EOF
+          incident=MIG-0009-DOWNGRADE-001
+          baseline_sha=$BASELINE_SHA
+          migration_file_sha256=2b874efc6f3492a4d0e81278ecd3c4c7e4cfd0b2074f3294ae23e949e1bf2a51
+          test_file_sha256=a9bf77575447665cde6d05ddd26bcdd3818779b5bce2a05cab24d659afd98d61
+          proposal_zip_sha256=fd49fc2dcfdfd814c6df6e7ccde664af8af5ecdb557ade56382585f08cd025df
+          functional_commit_created=false
+          production_migration_executed=false
+          production_deploy_executed=false
+          EOF
+
+      - name: Upload complete runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mig-0009-downgrade-001-runtime-evidence
+          path: |
+            evidence_*.log
+            postgres_gate_report.json
+            mig_0009_runtime_evidence_manifest.txt
+          if-no-files-found: warn
