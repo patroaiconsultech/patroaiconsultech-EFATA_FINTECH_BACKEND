@@ -18,7 +18,6 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     if not inspector.has_table("integration_sync_jobs"):
         return
-
     columns = {
         column["name"]
         for column in inspector.get_columns("integration_sync_jobs")
@@ -46,7 +45,6 @@ def upgrade() -> None:
                 ["study_id"],
                 ["study_id"],
             )
-
     inspector = sa.inspect(bind)
     index_names = {
         index["name"]
@@ -73,7 +71,6 @@ def downgrade() -> None:
     }
     if "study_id" not in columns:
         return
-
     index_names = {
         index["name"]
         for index in inspector.get_indexes("integration_sync_jobs")
@@ -84,7 +81,6 @@ def downgrade() -> None:
             "ix_sync_job_study_created",
             table_name="integration_sync_jobs",
         )
-
     if bind.dialect.name == "sqlite":
         with op.batch_alter_table(
             "integration_sync_jobs",
@@ -92,9 +88,19 @@ def downgrade() -> None:
         ) as batch_op:
             batch_op.drop_column("study_id")
     else:
-        op.drop_constraint(
-            "fk_sync_job_study",
-            "integration_sync_jobs",
-            type_="foreignkey",
-        )
+        inspector = sa.inspect(bind)
+        study_fk_names = {
+            foreign_key["name"]
+            for foreign_key in inspector.get_foreign_keys(
+                "integration_sync_jobs"
+            )
+            if foreign_key.get("name")
+            and foreign_key.get("constrained_columns") == ["study_id"]
+        }
+        for foreign_key_name in sorted(study_fk_names):
+            op.drop_constraint(
+                foreign_key_name,
+                "integration_sync_jobs",
+                type_="foreignkey",
+            )
         op.drop_column("integration_sync_jobs", "study_id")
