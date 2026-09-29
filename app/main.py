@@ -1,11 +1,14 @@
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.errors import ApiError, api_error_handler
+from app.m2m.audit import m2m_audit_middleware
+from app.m2m.errors import M2MApiError, m2m_error_handler, m2m_request_validation_handler
 from app.logging_config import configure_logging
 from app.middleware import request_context_middleware
-from app.routers import consent_ledger, context, documents, health, leads, marketplace, opportunities, qualification, reconciliation, reconciliation_persistent, representations, risk, viability
+from app.routers import consent_ledger, context, documents, health, leads, marketplace, m2m, opportunities, qualification, reconciliation, reconciliation_persistent, representations, risk, viability
 
 
 def create_app() -> FastAPI:
@@ -42,8 +45,14 @@ def create_app() -> FastAPI:
 
     app.middleware("http")(request_context_middleware)
     app.add_exception_handler(ApiError, api_error_handler)
+    app.add_exception_handler(M2MApiError, m2m_error_handler)
+    app.add_exception_handler(RequestValidationError, m2m_request_validation_handler)
+    if settings.m2m_enabled:
+        app.middleware("http")(m2m_audit_middleware)
     app.include_router(health.router)
     app.include_router(context.router)
+    if settings.m2m_enabled:
+        app.include_router(m2m.router)
 
     if settings.premium_slice_enabled:
         app.include_router(leads.router)

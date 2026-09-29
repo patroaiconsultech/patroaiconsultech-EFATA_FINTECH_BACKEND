@@ -1,0 +1,31 @@
+{
+  "baseline_backend_zip_sha256": "3f577e7a138fbbff7095d17a0fd9f3f55c461948b37a5334202442deb2cf152b",
+  "target_branch": "feat/efata-fintech-m2m-r1-read-only",
+  "changed_files": [
+    "app/config.py",
+    "app/main.py"
+  ],
+  "added_files": [
+    "app/m2m/__init__.py",
+    "app/m2m/audit.py",
+    "app/m2m/auth.py",
+    "app/m2m/context.py",
+    "app/m2m/errors.py",
+    "app/m2m/schemas.py",
+    "app/m2m/scopes.py",
+    "app/m2m/service.py",
+    "app/routers/m2m.py",
+    "tests/m2m_test_support.py",
+    "tests/test_m2m_audit.py",
+    "tests/test_m2m_auth.py",
+    "tests/test_m2m_contract.py",
+    "tests/test_m2m_read_api.py",
+    "tests/test_m2m_tenant_isolation.py"
+  ],
+  "removed_files": [],
+  "migration_files_changed": [],
+  "apply_mode": "copy files over exact baseline; review unified diff first",
+  "commit_authorized": false,
+  "merge_authorized": false,
+  "deploy_authorized": false
+}

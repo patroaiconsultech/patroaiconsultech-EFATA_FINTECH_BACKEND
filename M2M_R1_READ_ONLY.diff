@@ -1,0 +1,1617 @@
+--- a/app/config.py
++++ b/app/config.py
+@@ -53,6 +53,23 @@
+     efata_platform_sse_max_event_bytes: int = 1_048_576
+     efata_platform_sse_max_events: int = 10_000
+ 
++
++    # EFATÀ Mother -> Fintech M2M control/governance boundary.
++    # Disabled by default. R1 exposes read-only capabilities only.
++    m2m_enabled: bool = False
++    m2m_auth_mode: Literal["oidc_introspection"] = "oidc_introspection"
++    m2m_introspection_endpoint: str | None = None
++    m2m_introspection_client_id: str | None = None
++    m2m_introspection_client_secret: str | None = None
++    m2m_issuer: str | None = None
++    m2m_audience: str = "efata-fintech"
++    m2m_allowed_client_id: str | None = None
++    m2m_service_principal_id: str | None = None
++    m2m_http_timeout_seconds: float = 5.0
++    m2m_max_token_lifetime_seconds: int = 900
++    release_sha: str | None = None
++    release_version: str | None = None
++
+     log_level: str = "INFO"
+ 
+ 
+--- a/app/main.py
++++ b/app/main.py
+@@ -1,11 +1,14 @@
+ from fastapi import FastAPI
++from fastapi.exceptions import RequestValidationError
+ from fastapi.middleware.cors import CORSMiddleware
+ 
+ from app.config import get_settings
+ from app.errors import ApiError, api_error_handler
++from app.m2m.audit import m2m_audit_middleware
++from app.m2m.errors import M2MApiError, m2m_error_handler, m2m_request_validation_handler
+ from app.logging_config import configure_logging
+ from app.middleware import request_context_middleware
+-from app.routers import consent_ledger, context, documents, health, leads, marketplace, opportunities, qualification, reconciliation, reconciliation_persistent, representations, risk, viability
++from app.routers import consent_ledger, context, documents, health, leads, marketplace, m2m, opportunities, qualification, reconciliation, reconciliation_persistent, representations, risk, viability
+ 
+ 
+ def create_app() -> FastAPI:
+@@ -42,8 +45,14 @@
+ 
+     app.middleware("http")(request_context_middleware)
+     app.add_exception_handler(ApiError, api_error_handler)
++    app.add_exception_handler(M2MApiError, m2m_error_handler)
++    app.add_exception_handler(RequestValidationError, m2m_request_validation_handler)
++    if settings.m2m_enabled:
++        app.middleware("http")(m2m_audit_middleware)
+     app.include_router(health.router)
+     app.include_router(context.router)
++    if settings.m2m_enabled:
++        app.include_router(m2m.router)
+ 
+     if settings.premium_slice_enabled:
+         app.include_router(leads.router)
+--- /dev/null
++++ b/app/m2m/__init__.py
+@@ -0,0 +1 @@
++"""EFATÀ Mother -> Fintech governed M2M boundary."""
+--- /dev/null
++++ b/app/m2m/audit.py
+@@ -0,0 +1,200 @@
++from __future__ import annotations
++
++import logging
++from datetime import datetime, timezone
++from time import perf_counter
++from uuid import UUID
++
++from fastapi import Request
++from fastapi.responses import JSONResponse
++from sqlalchemy.orm import Session
++
++from app.config import get_settings
++from app.db import SessionLocal
++from app.models import AuditEvent
++from app.persistent_consent_ledger import PersistentConsentLedger
++
++
++logger = logging.getLogger("fintech.m2m.audit")
++_persistent_ledger = PersistentConsentLedger()
++
++
++def _safe_uuid(value: str | None) -> str | None:
++    try:
++        return str(UUID(str(value or "")))
++    except ValueError:
++        return None
++
++
++def record_m2m_audit(
++    db: Session,
++    *,
++    context,
++    decision: str,
++    status_code: int,
++    latency_ms: float,
++    error_code: str | None,
++) -> AuditEvent:
++    detail = {
++        "service_id": context.service_subject,
++        "client_id": context.client_id,
++        "credential_id": context.credential_id,
++        "environment": context.source_environment,
++        "organization_id": context.organization_id,
++        "service_principal_id": context.service_principal_id,
++        "execution_id": context.execution_id,
++        "capability": context.requested_capability,
++        "scope": context.requested_capability,
++        "decision": decision,
++        "status": status_code,
++        "latency_ms": latency_ms,
++        "error_code": error_code,
++        "governance_mode": context.governance_mode,
++        "write_allowed": context.write_allowed,
++        "execution_allowed": context.execution_allowed,
++        "data_classification": context.data_classification,
++    }
++    event = AuditEvent(
++        tenant_id=context.tenant_id,
++        actor_id=context.service_principal_id,
++        action="M2M_REQUEST",
++        resource_type="M2M_CAPABILITY",
++        resource_id=context.requested_capability,
++        request_id=context.request_id,
++        correlation_id=context.correlation_id,
++        detail=detail,
++        occurred_at=datetime.now(timezone.utc),
++    )
++    db.add(event)
++    _persistent_ledger.append_audit_event(
++        db,
++        tenant_id=event.tenant_id,
++        actor_id=event.actor_id,
++        action=event.action,
++        resource_type=event.resource_type,
++        resource_id=event.resource_id,
++        request_id=event.request_id,
++        correlation_id=event.correlation_id,
++        detail=event.detail,
++        occurred_at=event.occurred_at,
++    )
++    return event
++
++
++async def m2m_audit_middleware(request: Request, call_next):
++    if not request.url.path.startswith("/api/v1/m2m/"):
++        return await call_next(request)
++
++    started = perf_counter()
++    try:
++        response = await call_next(request)
++    except Exception:
++        latency_ms = round((perf_counter() - started) * 1000, 3)
++        request.state.m2m_error_code = "M2M_INTERNAL_ERROR"
++        logger.exception(
++            "M2M_UNHANDLED_EXCEPTION",
++            extra={
++                "request_id": getattr(request.state, "request_id", None),
++                "execution_id": getattr(request.state, "m2m_execution_id", None),
++                "correlation_id": getattr(request.state, "correlation_id", None),
++                "event_code": "M2M_UNHANDLED_EXCEPTION",
++            },
++        )
++        context = getattr(request.state, "m2m_context", None)
++        response = JSONResponse(
++            status_code=500,
++            content={
++                "ok": False,
++                "request_id": getattr(request.state, "request_id", None),
++                "execution_id": getattr(request.state, "m2m_execution_id", None),
++                "correlation_id": getattr(request.state, "correlation_id", None),
++                "tenant_id": getattr(context, "tenant_id", None),
++                "capability": getattr(request.state, "m2m_requested_capability", None),
++                "status": "failed",
++                "data": None,
++                "error": {
++                    "code": "M2M_INTERNAL_ERROR",
++                    "message": "Falha interna no processamento M2M.",
++                    "details": [],
++                },
++                "meta": {
++                    "api_version": "v1",
++                    "contract_version": "m2m-r1",
++                },
++            },
++        )
++    latency_ms = round((perf_counter() - started) * 1000, 3)
++    context = getattr(request.state, "m2m_context", None)
++    error_code = getattr(request.state, "m2m_error_code", None)
++    decision = "allow" if response.status_code < 400 else "deny"
++
++    log_payload = {
++        "event_code": "M2M_REQUEST_DECISION",
++        "service_id": getattr(context, "service_subject", None),
++        "client_id": getattr(context, "client_id", None),
++        "credential_id": getattr(context, "credential_id", None),
++        "tenant_id": getattr(context, "tenant_id", None),
++        "organization_id": getattr(context, "organization_id", None),
++        "request_id": getattr(request.state, "request_id", None),
++        "execution_id": getattr(request.state, "m2m_execution_id", None),
++        "correlation_id": getattr(request.state, "correlation_id", None),
++        "capability": getattr(request.state, "m2m_requested_capability", None),
++        "decision": decision,
++        "status": response.status_code,
++        "latency_ms": latency_ms,
++        "error_code": error_code,
++    }
++    logger.info("M2M_REQUEST_DECISION", extra=log_payload)
++
++    # Only a fully validated tenant/service context is persisted. Requests that
++    # fail before tenant validation remain observable in structured logs but
++    # cannot write into an untrusted tenant's audit chain.
++    if context is not None:
++        try:
++            with SessionLocal() as db:
++                record_m2m_audit(
++                    db,
++                    context=context,
++                    decision=decision,
++                    status_code=response.status_code,
++                    latency_ms=latency_ms,
++                    error_code=error_code,
++                )
++                db.commit()
++        except Exception:
++            logger.exception(
++                "M2M_AUDIT_PERSISTENCE_FAILED",
++                extra={
++                    "request_id": getattr(request.state, "request_id", None),
++                    "execution_id": getattr(request.state, "m2m_execution_id", None),
++                    "correlation_id": getattr(request.state, "correlation_id", None),
++                    "event_code": "M2M_AUDIT_PERSISTENCE_FAILED",
++                },
++            )
++            return JSONResponse(
++                status_code=500,
++                content={
++                    "ok": False,
++                    "request_id": getattr(request.state, "request_id", None),
++                    "execution_id": getattr(request.state, "m2m_execution_id", None),
++                    "correlation_id": getattr(request.state, "correlation_id", None),
++                    "tenant_id": context.tenant_id,
++                    "capability": context.requested_capability,
++                    "status": "failed",
++                    "data": None,
++                    "error": {
++                        "code": "M2M_INTERNAL_ERROR",
++                        "message": "Falha ao persistir auditoria obrigatória.",
++                        "details": [],
++                    },
++                    "meta": {
++                        "api_version": "v1",
++                        "contract_version": "m2m-r1",
++                    },
++                },
++            )
++
++    response.headers["X-Execution-ID"] = (
++        getattr(request.state, "m2m_execution_id", None) or ""
++    )
++    return response
+--- /dev/null
++++ b/app/m2m/auth.py
+@@ -0,0 +1,175 @@
++from __future__ import annotations
++
++from datetime import datetime, timezone
++from typing import Any, Protocol
++
++import httpx
++from fastapi import Depends, Request
++from sqlalchemy.orm import Session
++
++from app.config import Settings, get_settings
++from app.db import get_db
++from app.m2m.context import M2MContext, M2MContextFactory, M2MIdentity, ensure_request_ids
++from app.m2m.errors import M2MApiError
++
++
++def _as_str_tuple(value: Any) -> tuple[str, ...]:
++    if isinstance(value, str):
++        # OAuth scopes are commonly space-separated. The contract capabilities
++        # claim may also arrive as a list.
++        return tuple(part for part in value.replace(",", " ").split() if part)
++    if isinstance(value, (list, tuple, set)):
++        return tuple(str(item).strip() for item in value if str(item).strip())
++    return ()
++
++
++class M2MTokenValidator(Protocol):
++    def validate(self, token: str) -> M2MIdentity:
++        ...
++
++
++class OidcIntrospectionM2MTokenValidator:
++    def __init__(self, settings: Settings):
++        self.settings = settings
++        required = {
++            "m2m_introspection_endpoint": settings.m2m_introspection_endpoint,
++            "m2m_introspection_client_id": settings.m2m_introspection_client_id,
++            "m2m_introspection_client_secret": settings.m2m_introspection_client_secret,
++            "m2m_issuer": settings.m2m_issuer,
++            "m2m_audience": settings.m2m_audience,
++            "m2m_allowed_client_id": settings.m2m_allowed_client_id,
++            "m2m_service_principal_id": settings.m2m_service_principal_id,
++        }
++        missing = [key for key, value in required.items() if not value]
++        if missing:
++            raise M2MApiError(
++                503,
++                "M2M_INTERNAL_ERROR",
++                "A autenticação M2M não está configurada.",
++            )
++
++    def validate(self, token: str) -> M2MIdentity:
++        try:
++            response = httpx.post(
++                self.settings.m2m_introspection_endpoint,
++                data={"token": token},
++                auth=(
++                    self.settings.m2m_introspection_client_id,
++                    self.settings.m2m_introspection_client_secret,
++                ),
++                timeout=self.settings.m2m_http_timeout_seconds,
++            )
++            response.raise_for_status()
++            claims: dict[str, Any] = response.json()
++        except M2MApiError:
++            raise
++        except Exception as exc:
++            raise M2MApiError(
++                503,
++                "M2M_UPSTREAM_UNAVAILABLE",
++                "O provedor de identidade M2M está indisponível.",
++            ) from exc
++
++        if not claims.get("active"):
++            raise M2MApiError(401, "M2M_UNAUTHENTICATED", "Credencial M2M inválida.")
++
++        issuer = str(claims.get("iss") or "").strip()
++        if issuer != str(self.settings.m2m_issuer):
++            raise M2MApiError(401, "M2M_UNAUTHENTICATED", "Credencial M2M inválida.")
++
++        audience = claims.get("aud", [])
++        audience = [audience] if isinstance(audience, str) else list(audience or [])
++        if self.settings.m2m_audience not in audience:
++            raise M2MApiError(401, "M2M_UNAUTHENTICATED", "Credencial M2M inválida.")
++
++        subject = str(claims.get("sub") or "").strip()
++        client_id = str(claims.get("client_id") or claims.get("azp") or "").strip()
++        credential_id = str(claims.get("jti") or "").strip()
++        source_environment = str(claims.get("env") or "").strip()
++
++        if (
++            not subject
++            or not client_id
++            or client_id != self.settings.m2m_allowed_client_id
++            or not credential_id
++            or source_environment != self.settings.app_env
++        ):
++            raise M2MApiError(401, "M2M_UNAUTHENTICATED", "Credencial M2M inválida.")
++
++        tenant_scope = _as_str_tuple(claims.get("tenant_scope"))
++        capabilities = _as_str_tuple(claims.get("capabilities"))
++        if not tenant_scope or not capabilities:
++            raise M2MApiError(403, "M2M_FORBIDDEN", "Credencial M2M sem contexto autorizado.")
++
++        now = datetime.now(timezone.utc).timestamp()
++        try:
++            issued_at = float(claims.get("iat"))
++            expires_at = float(claims.get("exp"))
++        except (TypeError, ValueError) as exc:
++            raise M2MApiError(401, "M2M_UNAUTHENTICATED", "Credencial M2M inválida.") from exc
++
++        if (
++            expires_at <= now
++            or issued_at > now + 60
++            or expires_at <= issued_at
++            or expires_at - issued_at > self.settings.m2m_max_token_lifetime_seconds
++        ):
++            raise M2MApiError(401, "M2M_UNAUTHENTICATED", "Credencial M2M inválida.")
++
++        return M2MIdentity(
++            subject=subject,
++            client_id=client_id,
++            credential_id=credential_id,
++            issuer=issuer,
++            source_environment=source_environment,
++            tenant_scope=tenant_scope,
++            capabilities=capabilities,
++        )
++
++
++def _bearer_token(request: Request) -> str:
++    authorization = request.headers.get("Authorization") or ""
++    if not authorization.startswith("Bearer "):
++        raise M2MApiError(401, "M2M_UNAUTHENTICATED", "Autenticação M2M necessária.")
++    token = authorization.removeprefix("Bearer ").strip()
++    if not token:
++        raise M2MApiError(401, "M2M_UNAUTHENTICATED", "Autenticação M2M necessária.")
++    return token
++
++
++def require_m2m_capability(required_capability: str):
++    def dependency(
++        request: Request,
++        db: Session = Depends(get_db),
++        settings: Settings = Depends(get_settings),
++    ) -> M2MContext:
++        request.state.m2m_requested_capability = required_capability
++        ensure_request_ids(request)
++
++        if not settings.m2m_enabled:
++            raise M2MApiError(404, "M2M_FORBIDDEN", "Integração M2M indisponível.")
++
++        if settings.m2m_auth_mode != "oidc_introspection":
++            raise M2MApiError(503, "M2M_INTERNAL_ERROR", "Modo de autenticação M2M inválido.")
++
++        validator = OidcIntrospectionM2MTokenValidator(settings)
++        identity = validator.validate(_bearer_token(request))
++        request.state.m2m_identity = identity
++
++        context = M2MContextFactory().create(
++            request=request,
++            identity=identity,
++            db=db,
++            service_principal_id=settings.m2m_service_principal_id or "",
++            requested_capability=required_capability,
++        )
++
++        if required_capability not in set(identity.capabilities):
++            raise M2MApiError(
++                403,
++                "M2M_SCOPE_DENIED",
++                "A identidade de serviço não possui a capability solicitada.",
++            )
++        return context
++
++    return dependency
+--- /dev/null
++++ b/app/m2m/context.py
+@@ -0,0 +1,174 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from uuid import UUID, uuid4
++
++from fastapi import Request
++from sqlalchemy import select
++from sqlalchemy.orm import Session
++
++from app.m2m.errors import M2MApiError
++from app.models import Tenant
++
++
++TENANT_HEADER = "X-Tenant-ID"
++ORGANIZATION_HEADER = "X-Organization-ID"
++EXECUTION_HEADER = "X-Execution-ID"
++
++
++def _uuid_text(value: str | None, *, field: str, required: bool = True) -> str | None:
++    raw = (value or "").strip()
++    if not raw:
++        if required:
++            raise M2MApiError(
++                422,
++                "M2M_VALIDATION_ERROR",
++                f"{field} é obrigatório.",
++                details=[{"field": field, "reason": "required"}],
++            )
++        return None
++    try:
++        return str(UUID(raw))
++    except ValueError as exc:
++        raise M2MApiError(
++            422,
++            "M2M_VALIDATION_ERROR",
++            f"{field} deve ser UUID.",
++            details=[{"field": field, "reason": "invalid_uuid"}],
++        ) from exc
++
++
++def ensure_request_ids(request: Request) -> tuple[str, str, str]:
++    # Audit persistence stores request/correlation IDs in VARCHAR(36), so M2M
++    # accepts only UUIDs at this boundary. Even an invalid caller-provided ID
++    # receives fresh safe IDs for observability of the rejection itself.
++    execution_id = _uuid_text(
++        request.headers.get(EXECUTION_HEADER) or str(uuid4()),
++        field="execution_id",
++    )
++    request.state.m2m_execution_id = execution_id
++
++    raw_request_id = (
++        getattr(request.state, "request_id", None)
++        or request.headers.get("X-Request-ID")
++        or str(uuid4())
++    )
++    try:
++        request_id = _uuid_text(raw_request_id, field="request_id")
++    except M2MApiError:
++        safe_id = str(uuid4())
++        request.state.request_id = safe_id
++        request.state.correlation_id = safe_id
++        raise
++
++    raw_correlation_id = (
++        getattr(request.state, "correlation_id", None)
++        or request.headers.get("X-Correlation-ID")
++        or request_id
++    )
++    try:
++        correlation_id = _uuid_text(raw_correlation_id, field="correlation_id")
++    except M2MApiError:
++        request.state.request_id = request_id
++        request.state.correlation_id = request_id
++        raise
++
++    request.state.request_id = request_id
++    request.state.correlation_id = correlation_id
++    return request_id, correlation_id, execution_id
++
++
++@dataclass(frozen=True)
++class M2MIdentity:
++    subject: str
++    client_id: str
++    credential_id: str
++    issuer: str
++    source_environment: str
++    tenant_scope: tuple[str, ...]
++    capabilities: tuple[str, ...]
++    provider: str = "oidc_introspection"
++
++
++@dataclass(frozen=True)
++class M2MContext:
++    service_principal_id: str
++    service_subject: str
++    client_id: str
++    credential_id: str
++    tenant_id: str
++    organization_id: str
++    request_id: str
++    execution_id: str
++    correlation_id: str
++    source_platform: str
++    source_environment: str
++    requested_capability: str
++    governance_mode: str = "controlled"
++    write_allowed: bool = False
++    execution_allowed: bool = False
++    data_classification: str = "INTERNAL"
++
++
++class M2MContextFactory:
++    def create(
++        self,
++        *,
++        request: Request,
++        identity: M2MIdentity,
++        db: Session,
++        service_principal_id: str,
++        requested_capability: str,
++    ) -> M2MContext:
++        request_id, correlation_id, execution_id = ensure_request_ids(request)
++
++        tenant_id = _uuid_text(
++            request.headers.get(TENANT_HEADER),
++            field="tenant_id",
++        )
++        organization_id = _uuid_text(
++            request.headers.get(ORGANIZATION_HEADER),
++            field="organization_id",
++        )
++        service_principal_id = _uuid_text(
++            service_principal_id,
++            field="service_principal_id",
++        )
++
++        if tenant_id not in set(identity.tenant_scope):
++            raise M2MApiError(
++                403,
++                "M2M_TENANT_DENIED",
++                "O tenant solicitado não está autorizado para esta identidade de serviço.",
++            )
++
++        tenant = db.scalar(
++            select(Tenant).where(
++                Tenant.tenant_id == tenant_id,
++                Tenant.status == "ACTIVE",
++            )
++        )
++        if tenant is None or tenant.organization_id != organization_id:
++            # Fail closed and do not disclose whether the tenant or organization exists.
++            raise M2MApiError(
++                403,
++                "M2M_TENANT_DENIED",
++                "O tenant solicitado não está autorizado para esta identidade de serviço.",
++            )
++
++        context = M2MContext(
++            service_principal_id=service_principal_id,
++            service_subject=identity.subject,
++            client_id=identity.client_id,
++            credential_id=identity.credential_id,
++            tenant_id=tenant.tenant_id,
++            organization_id=tenant.organization_id,
++            request_id=request_id,
++            execution_id=execution_id,
++            correlation_id=correlation_id,
++            source_platform=identity.issuer,
++            source_environment=identity.source_environment,
++            requested_capability=requested_capability,
++        )
++        request.state.m2m_context = context
++        return context
+--- /dev/null
++++ b/app/m2m/errors.py
+@@ -0,0 +1,93 @@
++from __future__ import annotations
++
++from fastapi import Request
++from fastapi.exception_handlers import request_validation_exception_handler
++from fastapi.exceptions import RequestValidationError
++from fastapi.responses import JSONResponse
++
++
++class M2MApiError(Exception):
++    def __init__(
++        self,
++        status_code: int,
++        code: str,
++        message: str,
++        *,
++        details: list[dict] | None = None,
++    ):
++        self.status_code = status_code
++        self.code = code
++        self.message = message
++        self.details = details or []
++        super().__init__(message)
++
++
++def _state_value(request: Request, name: str, default=None):
++    return getattr(request.state, name, default)
++
++
++def _error_envelope(
++    request: Request,
++    *,
++    status_code: int,
++    code: str,
++    message: str,
++    details: list[dict] | None = None,
++) -> JSONResponse:
++    request.state.m2m_error_code = code
++    context = _state_value(request, "m2m_context")
++    return JSONResponse(
++        status_code=status_code,
++        content={
++            "ok": False,
++            "request_id": _state_value(request, "request_id"),
++            "execution_id": _state_value(request, "m2m_execution_id"),
++            "correlation_id": _state_value(request, "correlation_id"),
++            "tenant_id": getattr(context, "tenant_id", None),
++            "capability": _state_value(request, "m2m_requested_capability"),
++            "status": "failed",
++            "data": None,
++            "error": {
++                "code": code,
++                "message": message,
++                "details": details or [],
++            },
++            "meta": {
++                "api_version": "v1",
++                "contract_version": "m2m-r1",
++            },
++        },
++    )
++
++
++async def m2m_error_handler(request: Request, exc: M2MApiError) -> JSONResponse:
++    return _error_envelope(
++        request,
++        status_code=exc.status_code,
++        code=exc.code,
++        message=exc.message,
++        details=exc.details,
++    )
++
++
++async def m2m_request_validation_handler(
++    request: Request,
++    exc: RequestValidationError,
++):
++    if not request.url.path.startswith("/api/v1/m2m/"):
++        return await request_validation_exception_handler(request, exc)
++
++    details = [
++        {
++            "field": ".".join(str(part) for part in error.get("loc", ())),
++            "reason": error.get("type", "validation_error"),
++        }
++        for error in exc.errors()
++    ]
++    return _error_envelope(
++        request,
++        status_code=422,
++        code="M2M_VALIDATION_ERROR",
++        message="Requisição M2M inválida.",
++        details=details,
++    )
+--- /dev/null
++++ b/app/m2m/schemas.py
+@@ -0,0 +1,57 @@
++from __future__ import annotations
++
++from datetime import datetime
++from typing import Any
++
++from pydantic import BaseModel, Field
++
++
++class M2MErrorBody(BaseModel):
++    code: str
++    message: str
++    details: list[dict[str, Any]] = Field(default_factory=list)
++
++
++class M2MResponseMeta(BaseModel):
++    api_version: str = "v1"
++    contract_version: str = "m2m-r1"
++    service_version: str | None = None
++    release_sha: str | None = None
++
++
++class M2MResponseEnvelope(BaseModel):
++    ok: bool = True
++    request_id: str
++    execution_id: str
++    correlation_id: str
++    tenant_id: str
++    capability: str
++    status: str = "completed"
++    data: Any
++    error: M2MErrorBody | None = None
++    meta: M2MResponseMeta
++
++
++class M2MCapabilityView(BaseModel):
++    scope: str
++    method: str
++    path: str
++    nature: str
++    tenant_required: bool
++    write: bool
++
++
++class M2MAuditEventView(BaseModel):
++    audit_event_id: str
++    actor_id: str
++    action: str
++    resource_type: str
++    resource_id: str
++    request_id: str
++    correlation_id: str
++    occurred_at: datetime
++
++
++class M2MAuditPage(BaseModel):
++    items: list[M2MAuditEventView]
++    next_cursor: str | None = None
+--- /dev/null
++++ b/app/m2m/scopes.py
+@@ -0,0 +1,51 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++
++M2M_CONTRACT_VERSION = "m2m-r1"
++M2M_API_VERSION = "v1"
++
++
++@dataclass(frozen=True)
++class M2MCapability:
++    scope: str
++    method: str
++    path: str
++    nature: str
++    tenant_required: bool = True
++    write: bool = False
++
++
++R1_CAPABILITIES: tuple[M2MCapability, ...] = (
++    M2MCapability(
++        scope="fintech.health.read",
++        method="GET",
++        path="/api/v1/m2m/health",
++        nature="operational",
++    ),
++    M2MCapability(
++        scope="fintech.runtime.read",
++        method="GET",
++        path="/api/v1/m2m/runtime",
++        nature="operational",
++    ),
++    M2MCapability(
++        scope="fintech.capabilities.read",
++        method="GET",
++        path="/api/v1/m2m/capabilities",
++        nature="contract",
++    ),
++    M2MCapability(
++        scope="fintech.audit.read",
++        method="GET",
++        path="/api/v1/m2m/audit/events",
++        nature="audit",
++    ),
++)
++
++R1_SCOPE_SET = frozenset(item.scope for item in R1_CAPABILITIES)
++
++
++def get_capability(scope: str) -> M2MCapability | None:
++    return next((item for item in R1_CAPABILITIES if item.scope == scope), None)
+--- /dev/null
++++ b/app/m2m/service.py
+@@ -0,0 +1,143 @@
++from __future__ import annotations
++
++import base64
++import json
++from datetime import datetime
++from typing import Any
++
++from sqlalchemy import and_, or_, select, text
++from sqlalchemy.orm import Session
++
++from app.config import Settings
++from app.m2m.errors import M2MApiError
++from app.m2m.scopes import M2M_API_VERSION, M2M_CONTRACT_VERSION, R1_CAPABILITIES
++from app.models import AuditEvent
++
++
++def _encode_cursor(event: AuditEvent) -> str:
++    payload = json.dumps(
++        {
++            "occurred_at": event.occurred_at.isoformat(),
++            "audit_event_id": event.audit_event_id,
++        },
++        separators=(",", ":"),
++    ).encode("utf-8")
++    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
++
++
++def _decode_cursor(cursor: str) -> tuple[datetime, str]:
++    try:
++        padded = cursor + "=" * (-len(cursor) % 4)
++        data = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
++        occurred_at = datetime.fromisoformat(str(data["occurred_at"]))
++        audit_event_id = str(data["audit_event_id"])
++        if not audit_event_id:
++            raise ValueError("missing audit_event_id")
++        return occurred_at, audit_event_id
++    except Exception as exc:
++        raise M2MApiError(
++            422,
++            "M2M_VALIDATION_ERROR",
++            "Cursor de auditoria inválido.",
++            details=[{"field": "cursor", "reason": "invalid_cursor"}],
++        ) from exc
++
++
++class M2MReadService:
++    def health(self, db: Session, settings: Settings) -> dict[str, Any]:
++        db.execute(text("SELECT 1"))
++        return {
++            "status": "ready",
++            "service": settings.app_name,
++            "environment": settings.app_env,
++            "service_version": settings.release_version or "unknown",
++            "release_sha": settings.release_sha or "unknown",
++            "database": "reachable",
++        }
++
++    def runtime(self, db: Session, settings: Settings) -> dict[str, Any]:
++        db.execute(text("SELECT 1"))
++        return {
++            "service": settings.app_name,
++            "environment": settings.app_env,
++            "api_version": M2M_API_VERSION,
++            "contract_version": M2M_CONTRACT_VERSION,
++            "service_version": settings.release_version or "unknown",
++            "release_sha": settings.release_sha or "unknown",
++            "feature_flags": {
++                "m2m_enabled": settings.m2m_enabled,
++                "premium_slice_enabled": settings.premium_slice_enabled,
++            },
++            "dependencies": {"database": "reachable"},
++            "capabilities": [item.scope for item in R1_CAPABILITIES],
++        }
++
++    def capabilities(self) -> dict[str, Any]:
++        return {
++            "contract_version": M2M_CONTRACT_VERSION,
++            "capabilities": [
++                {
++                    "scope": item.scope,
++                    "method": item.method,
++                    "path": item.path,
++                    "nature": item.nature,
++                    "tenant_required": item.tenant_required,
++                    "write": item.write,
++                }
++                for item in R1_CAPABILITIES
++            ],
++        }
++
++    def audit_events(
++        self,
++        db: Session,
++        *,
++        tenant_id: str,
++        limit: int,
++        cursor: str | None,
++        from_ts: datetime | None,
++        to_ts: datetime | None,
++    ) -> tuple[list[AuditEvent], str | None]:
++        if limit < 1 or limit > 100:
++            raise M2MApiError(
++                422,
++                "M2M_VALIDATION_ERROR",
++                "limit deve estar entre 1 e 100.",
++                details=[{"field": "limit", "reason": "out_of_range"}],
++            )
++        if from_ts and to_ts and from_ts > to_ts:
++            raise M2MApiError(
++                422,
++                "M2M_VALIDATION_ERROR",
++                "Intervalo de auditoria inválido.",
++                details=[{"field": "time_range", "reason": "from_after_to"}],
++            )
++
++        statement = select(AuditEvent).where(AuditEvent.tenant_id == tenant_id)
++        if from_ts is not None:
++            statement = statement.where(AuditEvent.occurred_at >= from_ts)
++        if to_ts is not None:
++            statement = statement.where(AuditEvent.occurred_at <= to_ts)
++
++        if cursor:
++            cursor_time, cursor_id = _decode_cursor(cursor)
++            statement = statement.where(
++                or_(
++                    AuditEvent.occurred_at < cursor_time,
++                    and_(
++                        AuditEvent.occurred_at == cursor_time,
++                        AuditEvent.audit_event_id < cursor_id,
++                    ),
++                )
++            )
++
++        events = db.scalars(
++            statement
++            .order_by(AuditEvent.occurred_at.desc(), AuditEvent.audit_event_id.desc())
++            .limit(limit + 1)
++        ).all()
++
++        has_more = len(events) > limit
++        page = list(events[:limit])
++        next_cursor = _encode_cursor(page[-1]) if has_more and page else None
++        return page, next_cursor
+--- /dev/null
++++ b/app/routers/m2m.py
+@@ -0,0 +1,123 @@
++from __future__ import annotations
++
++from datetime import datetime
++from typing import Any
++
++from fastapi import APIRouter, Depends, Query, Request
++from sqlalchemy.orm import Session
++
++from app.config import Settings, get_settings
++from app.db import get_db
++from app.m2m.auth import require_m2m_capability
++from app.m2m.context import M2MContext
++from app.m2m.schemas import M2MResponseEnvelope
++from app.m2m.scopes import M2M_API_VERSION, M2M_CONTRACT_VERSION
++from app.m2m.service import M2MReadService
++
++
++router = APIRouter(prefix="/api/v1/m2m", tags=["m2m"])
++_service = M2MReadService()
++
++
++def _envelope(
++    *,
++    context: M2MContext,
++    data: Any,
++    settings: Settings,
++) -> dict[str, Any]:
++    return {
++        "ok": True,
++        "request_id": context.request_id,
++        "execution_id": context.execution_id,
++        "correlation_id": context.correlation_id,
++        "tenant_id": context.tenant_id,
++        "capability": context.requested_capability,
++        "status": "completed",
++        "data": data,
++        "error": None,
++        "meta": {
++            "api_version": M2M_API_VERSION,
++            "contract_version": M2M_CONTRACT_VERSION,
++            "service_version": settings.release_version,
++            "release_sha": settings.release_sha,
++        },
++    }
++
++
++@router.get("/health", response_model=M2MResponseEnvelope)
++def health(
++    request: Request,
++    context: M2MContext = Depends(require_m2m_capability("fintech.health.read")),
++    db: Session = Depends(get_db),
++    settings: Settings = Depends(get_settings),
++):
++    return _envelope(
++        context=context,
++        data=_service.health(db, settings),
++        settings=settings,
++    )
++
++
++@router.get("/runtime", response_model=M2MResponseEnvelope)
++def runtime(
++    request: Request,
++    context: M2MContext = Depends(require_m2m_capability("fintech.runtime.read")),
++    db: Session = Depends(get_db),
++    settings: Settings = Depends(get_settings),
++):
++    return _envelope(
++        context=context,
++        data=_service.runtime(db, settings),
++        settings=settings,
++    )
++
++
++@router.get("/capabilities", response_model=M2MResponseEnvelope)
++def capabilities(
++    request: Request,
++    context: M2MContext = Depends(require_m2m_capability("fintech.capabilities.read")),
++    settings: Settings = Depends(get_settings),
++):
++    return _envelope(
++        context=context,
++        data=_service.capabilities(),
++        settings=settings,
++    )
++
++
++@router.get("/audit/events", response_model=M2MResponseEnvelope)
++def audit_events(
++    request: Request,
++    limit: int = Query(50, ge=1, le=100),
++    cursor: str | None = Query(None),
++    from_ts: datetime | None = Query(None),
++    to_ts: datetime | None = Query(None),
++    context: M2MContext = Depends(require_m2m_capability("fintech.audit.read")),
++    db: Session = Depends(get_db),
++    settings: Settings = Depends(get_settings),
++):
++    events, next_cursor = _service.audit_events(
++        db,
++        tenant_id=context.tenant_id,
++        limit=limit,
++        cursor=cursor,
++        from_ts=from_ts,
++        to_ts=to_ts,
++    )
++    data = {
++        "items": [
++            {
++                "audit_event_id": event.audit_event_id,
++                "actor_id": event.actor_id,
++                "action": event.action,
++                "resource_type": event.resource_type,
++                "resource_id": event.resource_id,
++                "request_id": event.request_id,
++                "correlation_id": event.correlation_id,
++                "occurred_at": event.occurred_at,
++            }
++            for event in events
++        ],
++        "next_cursor": next_cursor,
++    }
++    return _envelope(context=context, data=data, settings=settings)
+--- /dev/null
++++ b/tests/m2m_test_support.py
+@@ -0,0 +1,109 @@
++from __future__ import annotations
++
++from datetime import datetime, timezone
++from types import SimpleNamespace
++
++from fastapi.testclient import TestClient
++
++from app.config import get_settings
++from app.main import create_app
++
++
++SERVICE_PRINCIPAL_ID = "30000000-0000-0000-0000-000000000001"
++CLIENT_ID = "efata-mother-client"
++INTROSPECTION_CLIENT_ID = "fintech-introspector"
++INTROSPECTION_SECRET = "test-only-secret"
++JTI = "40000000-0000-0000-0000-000000000001"
++
++ALL_R1_CAPABILITIES = [
++    "fintech.health.read",
++    "fintech.runtime.read",
++    "fintech.capabilities.read",
++    "fintech.audit.read",
++]
++
++
++class FakeIntrospectionResponse:
++    def __init__(self, claims: dict, status_code: int = 200):
++        self._claims = claims
++        self.status_code = status_code
++
++    def raise_for_status(self):
++        if self.status_code >= 400:
++            raise RuntimeError(f"upstream status {self.status_code}")
++
++    def json(self):
++        return self._claims
++
++
++def configure_m2m_env(monkeypatch):
++    monkeypatch.setenv("FINTECH_M2M_ENABLED", "true")
++    monkeypatch.setenv("FINTECH_M2M_AUTH_MODE", "oidc_introspection")
++    monkeypatch.setenv("FINTECH_M2M_INTROSPECTION_ENDPOINT", "https://idp.test/introspect")
++    monkeypatch.setenv("FINTECH_M2M_INTROSPECTION_CLIENT_ID", INTROSPECTION_CLIENT_ID)
++    monkeypatch.setenv("FINTECH_M2M_INTROSPECTION_CLIENT_SECRET", INTROSPECTION_SECRET)
++    monkeypatch.setenv("FINTECH_M2M_ISSUER", "efata-mother")
++    monkeypatch.setenv("FINTECH_M2M_AUDIENCE", "efata-fintech")
++    monkeypatch.setenv("FINTECH_M2M_ALLOWED_CLIENT_ID", CLIENT_ID)
++    monkeypatch.setenv("FINTECH_M2M_SERVICE_PRINCIPAL_ID", SERVICE_PRINCIPAL_ID)
++    monkeypatch.setenv("FINTECH_M2M_MAX_TOKEN_LIFETIME_SECONDS", "900")
++    monkeypatch.setenv("FINTECH_RELEASE_SHA", "test-release-sha")
++    monkeypatch.setenv("FINTECH_RELEASE_VERSION", "test-release-version")
++    get_settings.cache_clear()
++
++
++def build_claims(
++    *,
++    tenant_scope: list[str],
++    capabilities: list[str] | None = None,
++    active: bool = True,
++    issuer: str = "efata-mother",
++    audience: str = "efata-fintech",
++    environment: str = "test",
++    client_id: str = CLIENT_ID,
++    subject: str = "service:efata-platform",
++    jti: str = JTI,
++    lifetime_seconds: int = 600,
++):
++    now = datetime.now(timezone.utc).timestamp()
++    return {
++        "active": active,
++        "iss": issuer,
++        "sub": subject,
++        "aud": audience,
++        "env": environment,
++        "client_id": client_id,
++        "jti": jti,
++        "tenant_scope": tenant_scope,
++        "capabilities": capabilities or list(ALL_R1_CAPABILITIES),
++        "iat": now - 1,
++        "exp": now + lifetime_seconds,
++    }
++
++
++def patch_introspection(monkeypatch, claims: dict):
++    def fake_post(url, *, data, auth, timeout):
++        assert url == "https://idp.test/introspect"
++        assert data == {"token": "token-ok"}
++        assert auth == (INTROSPECTION_CLIENT_ID, INTROSPECTION_SECRET)
++        assert timeout == 5.0
++        return FakeIntrospectionResponse(claims)
++
++    monkeypatch.setattr("app.m2m.auth.httpx.post", fake_post)
++
++
++def make_client(monkeypatch, claims: dict) -> TestClient:
++    configure_m2m_env(monkeypatch)
++    patch_introspection(monkeypatch, claims)
++    return TestClient(create_app())
++
++
++def m2m_headers(*, tenant_id: str, organization_id: str) -> dict[str, str]:
++    return {
++        "Authorization": "Bearer token-ok",
++        "X-Tenant-ID": tenant_id,
++        "X-Organization-ID": organization_id,
++        "X-Request-ID": "90000000-0000-0000-0000-000000000011",
++        "X-Correlation-ID": "90000000-0000-0000-0000-000000000012",
++        "X-Execution-ID": "90000000-0000-0000-0000-000000000013",
++    }
+--- /dev/null
++++ b/tests/test_m2m_audit.py
+@@ -0,0 +1,91 @@
++from datetime import datetime, timezone
++
++from sqlalchemy import select
++
++from app.db import SessionLocal
++from app.models import AuditEvent
++from tests.m2m_test_support import build_claims, make_client, m2m_headers
++
++
++def test_successful_m2m_request_persists_structured_audit(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++    response = client.get(
++        "/api/v1/m2m/health",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 200
++
++    with SessionLocal() as db:
++        event = db.scalar(
++            select(AuditEvent)
++            .where(
++                AuditEvent.tenant_id == ids["platform_tenant"],
++                AuditEvent.action == "M2M_REQUEST",
++            )
++            .order_by(AuditEvent.occurred_at.desc())
++        )
++        assert event is not None
++        assert event.actor_id == "30000000-0000-0000-0000-000000000001"
++        assert event.detail["service_id"] == "service:efata-platform"
++        assert event.detail["client_id"] == "efata-mother-client"
++        assert event.detail["credential_id"] == "40000000-0000-0000-0000-000000000001"
++        assert event.detail["organization_id"] == ids["platform_org"]
++        assert event.detail["capability"] == "fintech.health.read"
++        assert event.detail["decision"] == "allow"
++        assert event.detail["status"] == 200
++        assert event.detail["write_allowed"] is False
++        assert event.detail["execution_allowed"] is False
++        assert "token-ok" not in str(event.detail)
++        assert "test-only-secret" not in str(event.detail)
++
++
++def test_m2m_audit_read_is_tenant_filtered_and_detail_is_not_exposed(monkeypatch, ids):
++    with SessionLocal() as db:
++        db.add_all(
++            [
++                AuditEvent(
++                    tenant_id=ids["platform_tenant"],
++                    actor_id=ids["analyst_user"],
++                    action="PLATFORM_ONLY",
++                    resource_type="TEST",
++                    resource_id="platform-resource",
++                    request_id="90000000-0000-0000-0000-000000000021",
++                    correlation_id="90000000-0000-0000-0000-000000000022",
++                    detail={"secret_business_field": "must-not-leak"},
++                    occurred_at=datetime.now(timezone.utc),
++                ),
++                AuditEvent(
++                    tenant_id=ids["foreign_tenant"],
++                    actor_id=ids["foreign_user"],
++                    action="FOREIGN_ONLY",
++                    resource_type="TEST",
++                    resource_id="foreign-resource",
++                    request_id="90000000-0000-0000-0000-000000000023",
++                    correlation_id="90000000-0000-0000-0000-000000000024",
++                    detail={"secret_business_field": "foreign-secret"},
++                    occurred_at=datetime.now(timezone.utc),
++                ),
++            ]
++        )
++        db.commit()
++
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++    response = client.get(
++        "/api/v1/m2m/audit/events?limit=100",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 200
++    body = response.json()
++    items = body["data"]["items"]
++    assert any(item["action"] == "PLATFORM_ONLY" for item in items)
++    assert not any(item["action"] == "FOREIGN_ONLY" for item in items)
++    assert "secret_business_field" not in response.text
++    assert "foreign-secret" not in response.text
+--- /dev/null
++++ b/tests/test_m2m_auth.py
+@@ -0,0 +1,82 @@
++from datetime import datetime, timezone
++
++import pytest
++
++from app.config import Settings
++from app.m2m.auth import OidcIntrospectionM2MTokenValidator
++from app.m2m.errors import M2MApiError
++from tests.m2m_test_support import (
++    build_claims,
++    configure_m2m_env,
++    make_client,
++    m2m_headers,
++    patch_introspection,
++)
++
++
++def test_m2m_route_absent_when_feature_flag_disabled(client):
++    response = client.get("/api/v1/m2m/health")
++    assert response.status_code == 404
++
++
++def test_m2m_requires_bearer(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++    headers = m2m_headers(
++        tenant_id=ids["platform_tenant"],
++        organization_id=ids["platform_org"],
++    )
++    headers.pop("Authorization")
++    response = client.get("/api/v1/m2m/health", headers=headers)
++    assert response.status_code == 401
++    assert response.json()["error"]["code"] == "M2M_UNAUTHENTICATED"
++
++
++def test_m2m_rejects_wrong_audience(monkeypatch, ids):
++    claims = build_claims(
++        tenant_scope=[ids["platform_tenant"]],
++        audience="wrong-audience",
++    )
++    client = make_client(monkeypatch, claims)
++    response = client.get(
++        "/api/v1/m2m/health",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 401
++    assert response.json()["error"]["code"] == "M2M_UNAUTHENTICATED"
++
++
++def test_m2m_rejects_wrong_environment(monkeypatch, ids):
++    claims = build_claims(
++        tenant_scope=[ids["platform_tenant"]],
++        environment="production",
++    )
++    client = make_client(monkeypatch, claims)
++    response = client.get(
++        "/api/v1/m2m/health",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 401
++    assert response.json()["error"]["code"] == "M2M_UNAUTHENTICATED"
++
++
++def test_m2m_rejects_token_lifetime_over_limit(monkeypatch, ids):
++    claims = build_claims(
++        tenant_scope=[ids["platform_tenant"]],
++        lifetime_seconds=1800,
++    )
++    configure_m2m_env(monkeypatch)
++    patch_introspection(monkeypatch, claims)
++    settings = Settings()
++    validator = OidcIntrospectionM2MTokenValidator(settings)
++
++    with pytest.raises(M2MApiError) as captured:
++        validator.validate("token-ok")
++
++    assert captured.value.code == "M2M_UNAUTHENTICATED"
+--- /dev/null
++++ b/tests/test_m2m_contract.py
+@@ -0,0 +1,42 @@
++from app.m2m.scopes import R1_CAPABILITIES
++from tests.m2m_test_support import build_claims, make_client, m2m_headers
++
++
++def test_m2m_r1_has_no_write_routes():
++    assert R1_CAPABILITIES
++    assert all(item.method == "GET" for item in R1_CAPABILITIES)
++    assert all(item.write is False for item in R1_CAPABILITIES)
++    assert not any("/commands/" in item.path for item in R1_CAPABILITIES)
++
++
++def test_m2m_response_echoes_canonical_ids(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++    response = client.get(
++        "/api/v1/m2m/health",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    body = response.json()
++    assert body["request_id"] == "90000000-0000-0000-0000-000000000011"
++    assert body["correlation_id"] == "90000000-0000-0000-0000-000000000012"
++    assert body["execution_id"] == "90000000-0000-0000-0000-000000000013"
++
++
++def test_m2m_invalid_request_id_fails_closed(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++    headers = m2m_headers(
++        tenant_id=ids["platform_tenant"],
++        organization_id=ids["platform_org"],
++    )
++    headers["X-Request-ID"] = "not-a-uuid"
++
++    response = client.get("/api/v1/m2m/health", headers=headers)
++    assert response.status_code == 422
++    body = response.json()
++    assert body["error"]["code"] == "M2M_VALIDATION_ERROR"
++    assert body["request_id"] != "not-a-uuid"
++    assert body["execution_id"] == "90000000-0000-0000-0000-000000000013"
+--- /dev/null
++++ b/tests/test_m2m_read_api.py
+@@ -0,0 +1,103 @@
++from tests.m2m_test_support import build_claims, make_client, m2m_headers
++
++
++def test_m2m_health_returns_safe_versioned_envelope(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++
++    response = client.get(
++        "/api/v1/m2m/health",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 200
++    body = response.json()
++    assert body["ok"] is True
++    assert body["tenant_id"] == ids["platform_tenant"]
++    assert body["capability"] == "fintech.health.read"
++    assert body["meta"]["api_version"] == "v1"
++    assert body["meta"]["contract_version"] == "m2m-r1"
++    assert body["data"]["database"] == "reachable"
++    assert body["data"]["release_sha"] == "test-release-sha"
++    assert response.headers["X-Execution-ID"] == "90000000-0000-0000-0000-000000000013"
++
++
++def test_m2m_runtime_does_not_expose_secrets(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++
++    response = client.get(
++        "/api/v1/m2m/runtime",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 200
++    body_text = response.text
++    assert "test-only-secret" not in body_text
++    assert "FINTECH_DATABASE_URL" not in body_text
++    data = response.json()["data"]
++    assert data["contract_version"] == "m2m-r1"
++    assert data["dependencies"] == {"database": "reachable"}
++
++
++def test_m2m_capability_catalog_is_exactly_read_only_r1(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++
++    response = client.get(
++        "/api/v1/m2m/capabilities",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 200
++    items = response.json()["data"]["capabilities"]
++    assert {item["scope"] for item in items} == {
++        "fintech.health.read",
++        "fintech.runtime.read",
++        "fintech.capabilities.read",
++        "fintech.audit.read",
++    }
++    assert all(item["method"] == "GET" for item in items)
++    assert all(item["write"] is False for item in items)
++    assert not any("superadmin" in item["scope"] or item["scope"] == "fintech.all" for item in items)
++
++
++def test_m2m_validation_errors_use_canonical_envelope(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++
++    response = client.get(
++        "/api/v1/m2m/audit/events?limit=not-an-int",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 422
++    assert response.json()["error"]["code"] == "M2M_VALIDATION_ERROR"
++
++
++def test_m2m_unhandled_error_is_canonical_and_does_not_leak(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++
++    def explode(*args, **kwargs):
++        raise RuntimeError("database-password-should-never-leak")
++
++    monkeypatch.setattr("app.routers.m2m._service.health", explode)
++    response = client.get(
++        "/api/v1/m2m/health",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 500
++    assert response.json()["error"]["code"] == "M2M_INTERNAL_ERROR"
++    assert "database-password-should-never-leak" not in response.text
+--- /dev/null
++++ b/tests/test_m2m_tenant_isolation.py
+@@ -0,0 +1,69 @@
++from sqlalchemy import select
++
++from app.db import SessionLocal
++from app.models import AuditEvent
++from tests.m2m_test_support import build_claims, make_client, m2m_headers
++
++
++def test_m2m_cross_tenant_request_is_denied(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++
++    response = client.get(
++        "/api/v1/m2m/health",
++        headers=m2m_headers(
++            tenant_id=ids["foreign_tenant"],
++            organization_id=ids["foreign_org"],
++        ),
++    )
++    assert response.status_code == 403
++    assert response.json()["error"]["code"] == "M2M_TENANT_DENIED"
++
++
++def test_m2m_wrong_organization_is_denied_without_enumeration(monkeypatch, ids):
++    claims = build_claims(tenant_scope=[ids["platform_tenant"]])
++    client = make_client(monkeypatch, claims)
++
++    response = client.get(
++        "/api/v1/m2m/health",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["foreign_org"],
++        ),
++    )
++    assert response.status_code == 403
++    body = response.json()
++    assert body["error"]["code"] == "M2M_TENANT_DENIED"
++    assert "não está autorizado" in body["error"]["message"]
++
++
++def test_m2m_scope_denial_is_persisted_only_after_valid_tenant_context(monkeypatch, ids):
++    claims = build_claims(
++        tenant_scope=[ids["platform_tenant"]],
++        capabilities=["fintech.health.read"],
++    )
++    client = make_client(monkeypatch, claims)
++
++    response = client.get(
++        "/api/v1/m2m/runtime",
++        headers=m2m_headers(
++            tenant_id=ids["platform_tenant"],
++            organization_id=ids["platform_org"],
++        ),
++    )
++    assert response.status_code == 403
++    assert response.json()["error"]["code"] == "M2M_SCOPE_DENIED"
++
++    with SessionLocal() as db:
++        event = db.scalar(
++            select(AuditEvent)
++            .where(
++                AuditEvent.tenant_id == ids["platform_tenant"],
++                AuditEvent.action == "M2M_REQUEST",
++            )
++            .order_by(AuditEvent.occurred_at.desc())
++        )
++        assert event is not None
++        assert event.detail["decision"] == "deny"
++        assert event.detail["error_code"] == "M2M_SCOPE_DENIED"
++        assert event.detail["capability"] == "fintech.runtime.read"

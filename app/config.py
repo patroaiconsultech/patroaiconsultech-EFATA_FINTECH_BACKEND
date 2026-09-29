@@ -53,6 +53,23 @@ class Settings(BaseSettings):
     efata_platform_sse_max_event_bytes: int = 1_048_576
     efata_platform_sse_max_events: int = 10_000
 
+
+    # EFATÀ Mother -> Fintech M2M control/governance boundary.
+    # Disabled by default. R1 exposes read-only capabilities only.
+    m2m_enabled: bool = False
+    m2m_auth_mode: Literal["oidc_introspection"] = "oidc_introspection"
+    m2m_introspection_endpoint: str | None = None
+    m2m_introspection_client_id: str | None = None
+    m2m_introspection_client_secret: str | None = None
+    m2m_issuer: str | None = None
+    m2m_audience: str = "efata-fintech"
+    m2m_allowed_client_id: str | None = None
+    m2m_service_principal_id: str | None = None
+    m2m_http_timeout_seconds: float = 5.0
+    m2m_max_token_lifetime_seconds: int = 900
+    release_sha: str | None = None
+    release_version: str | None = None
+
     log_level: str = "INFO"
 
 
