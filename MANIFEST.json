@@ -1,0 +1,15 @@
+{
+  "package": "EFATA_FINTECH_M2M_R1_POSTGRES_CI_GATE",
+  "candidate_sha256": "e37222bf2e18636dc4850ac6bd5689c944d553d4faca3fc784822b5b1615896a",
+  "required_branch": "feat/efata-fintech-m2m-r1-read-only",
+  "approval_phrase": "APPROVE_M2M_R1_POSTGRES_EVIDENCE",
+  "source_hash_entries": 142,
+  "postgres_image": "postgres:17-alpine",
+  "known_separate_blocker": "MIG_0009_DOWNGRADE_001",
+  "downgrade_base_executed": false,
+  "source_functional_change": false,
+  "merge": false,
+  "deploy": false,
+  "m2m_live": false,
+  "llm": false
+}
