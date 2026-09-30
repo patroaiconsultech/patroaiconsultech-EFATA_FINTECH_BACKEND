@@ -4,7 +4,10 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-    "preDeployCommand": ["alembic upgrade head"],
+    "preDeployCommand": [
+      "alembic upgrade head",
+      "python scripts/seed_demo.py"
+    ],
     "startCommand": "sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'",
     "healthcheckPath": "/api/v1/health/live",
     "healthcheckTimeout": 120,
