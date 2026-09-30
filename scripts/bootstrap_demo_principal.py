@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Allow `python scripts/bootstrap_demo_principal.py` from the backend root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from sqlalchemy import select
 
 from app.config import get_settings
@@ -16,7 +22,7 @@ EXPECTED_AUTH_PROVIDER = "mock"
 
 
 def _ensure_exact(obj, *, entity: str, expected: dict[str, object]) -> None:
-    mismatches = []
+    mismatches: list[str] = []
     for field, expected_value in expected.items():
         actual_value = getattr(obj, field)
         if actual_value != expected_value:
@@ -25,7 +31,8 @@ def _ensure_exact(obj, *, entity: str, expected: dict[str, object]) -> None:
             )
     if mismatches:
         raise RuntimeError(
-            f"{entity} already exists with incompatible data: " + "; ".join(mismatches)
+            f"{entity} already exists with incompatible data: "
+            + "; ".join(mismatches)
         )
 
 
